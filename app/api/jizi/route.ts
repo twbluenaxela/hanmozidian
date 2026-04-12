@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCharacterByChar, getImages } from "@/lib/db/queries";
+import { resolveImageUrl } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -17,7 +18,6 @@ export async function GET(request: NextRequest) {
   }
 
   const chars = [...text];
-  const r2PublicUrl = process.env.R2_PUBLIC_URL || "";
 
   const results = [];
   for (const char of chars) {
@@ -45,9 +45,7 @@ export async function GET(request: NextRequest) {
       found: true,
       images: images.map((img) => ({
         ...img,
-        imageUrl: r2PublicUrl
-          ? `${r2PublicUrl}/${img.imagePath}`
-          : `/${img.imagePath}`,
+        imageUrl: resolveImageUrl(img.imagePath),
       })),
     });
   }

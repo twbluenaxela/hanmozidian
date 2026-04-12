@@ -69,7 +69,32 @@ python scripts/scrape_shufazidian.py --characters "永和九年"
 Python dependencies:
 
 ```bash
-pip install lmdb Pillow tqdm requests beautifulsoup4
+pip install lmdb Pillow tqdm requests beautifulsoup4 boto3 python-dotenv
+```
+
+### Uploading images to Cloudflare R2
+
+Once ingestion has produced images under `public/images/`, upload them to R2:
+
+```bash
+# Dry run to see what would be uploaded
+python scripts/upload_to_r2.py --dry-run
+
+# Actually upload (skips files already in R2)
+python scripts/upload_to_r2.py
+
+# Upload and delete local copies after success
+python scripts/upload_to_r2.py --cleanup
+```
+
+The script reads R2 credentials from `.env.local`. Once `R2_PUBLIC_URL` is set,
+the Next.js app automatically serves images from R2 instead of the local
+`public/` directory for any image whose path starts with `images/`.
+
+You can also test R2 connectivity with a small SVG upload:
+
+```bash
+npx tsx scripts/test_r2_connection.ts
 ```
 
 ## Project Structure
