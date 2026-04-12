@@ -1,0 +1,121 @@
+# 書法字典 (Chinese Calligraphy Dictionary)
+
+A reference tool for calligraphers to look up how famous historical calligraphers wrote specific characters in different script styles (篆書, 隸書, 楷書, 行書, 草書).
+
+## Features
+
+- **字典 mode** — Look up a character and browse historical calligraphy examples across all 5 script styles, filtered by calligrapher or famous work.
+- **集字 mode** — Type a phrase, pick a script style, and compose a visual reference of each character (with the ability to cycle through different calligraphers' versions per character).
+
+## Tech Stack
+
+- **Frontend**: Next.js 16 (App Router) + TypeScript + Tailwind CSS
+- **Database**: SQLite (via `better-sqlite3`) + Drizzle ORM for metadata
+- **Image Storage**: Cloudflare R2 in production (local `public/placeholder/` in dev)
+- **Data Scripts**: Python (for dataset ingestion + scraping)
+
+## Getting Started
+
+```bash
+npm install
+npx drizzle-kit push                 # create SQLite database schema
+npx tsx scripts/seed_reference.ts    # seed styles, calligraphers, works
+npx tsx scripts/seed_demo_data.ts    # seed placeholder images for UI testing
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Environment variables (`.env.local`)
+
+```
+R2_ENDPOINT=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=shufazidian
+R2_PUBLIC_URL=
+```
+
+Leave `R2_PUBLIC_URL` empty to serve images from the local `public/` directory during development. Set it to your R2 public URL (or custom domain) once you've uploaded images to R2.
+
+## Data Sources
+
+The app is designed to be populated from multiple calligraphy datasets:
+
+### Primary datasets
+
+1. **[MCCD](https://github.com/SCUT-DLVCLab/MCCD)** — 329,715 images, 7,765 characters, 142 calligraphers, with script style and dynasty metadata. Requires application (CC BY-NC-ND 4.0).
+2. **[zhuojg/chinese-calligraphy-dataset](https://github.com/zhuojg/chinese-calligraphy-dataset)** — 138,499 images, Apache 2.0.
+
+### Supplementary
+
+- Web scraping from sites like `shufazidian.com` and `cidianwang.com` (rate-limited, non-commercial use only).
+
+### Ingestion scripts
+
+```bash
+# Once you've downloaded MCCD LMDB files:
+python scripts/ingest_mccd.py --lmdb-path /path/to/mccd/lmdb
+
+# Or the zhuojg dataset:
+python scripts/ingest_zhuojg.py \
+  --char-dir /path/to/zhuojg/character_organized \
+  --calligrapher-dir /path/to/zhuojg/calligrapher_organized
+
+# Supplementary scraping:
+python scripts/scrape_shufazidian.py --characters "永和九年"
+```
+
+Python dependencies:
+
+```bash
+pip install lmdb Pillow tqdm requests beautifulsoup4
+```
+
+## Project Structure
+
+```
+shufazidian/
+├── app/                          # Next.js App Router
+│   ├── page.tsx                  # Home / 字典 mode (search)
+│   ├── character/[char]/page.tsx # Character detail (style tabs + grid)
+│   ├── jizi/page.tsx             # 集字 mode (phrase composition)
+│   └── api/
+│       ├── search/
+│       ├── character/[char]/images/
+│       ├── calligraphers/
+│       ├── works/
+│       └── jizi/
+├── components/
+│   ├── SearchBar.tsx             # Search input with IME handling
+│   ├── StyleTabs.tsx             # 篆/隸/楷/行/草 tabs
+│   ├── SubFilter.tsx             # 作者/作品/篩選
+│   ├── ImageGrid.tsx             # Responsive grid
+│   ├── ImageCard.tsx
+│   ├── ImageModal.tsx            # Lightbox
+│   └── BottomNav.tsx             # 字典/碑帖/集字/我的
+├── lib/
+│   ├── db/schema.ts              # Drizzle schema
+│   ├── db/index.ts               # DB connection
+│   ├── db/queries.ts             # Reusable query helpers
+│   └── utils.ts
+├── scripts/
+│   ├── seed_reference.ts         # Seed styles, calligraphers, works
+│   ├── seed_demo_data.ts         # Demo data for UI testing
+│   ├── ingest_mccd.py
+│   ├── ingest_zhuojg.py
+│   └── scrape_shufazidian.py
+└── data/                         # SQLite file lives here (gitignored)
+```
+
+## Database Schema
+
+- **characters** — `character`, `unicode_hex`
+- **script_styles** — 篆書 / 隸書 / 楷書 / 行書 / 草書
+- **calligraphers** — `name_zh`, `name_en`, `dynasty`
+- **works** — famous pieces (蘭亭序, 祭姪文稿, etc.) with calligrapher + style
+- **calligraphy_images** — character + style + calligrapher + work + image_path
+
+## License
+
+Non-commercial use only. Calligraphy images sourced from academic datasets (MCCD is CC BY-NC-ND 4.0).
