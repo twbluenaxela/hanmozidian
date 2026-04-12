@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCharacterByChar, getImages, getStyleCounts } from "@/lib/db/queries";
+import { resolveImageUrl } from "@/lib/utils";
 
 export async function GET(
   request: NextRequest,
@@ -32,13 +33,9 @@ export async function GET(
     limit,
   });
 
-  // Prepend public URL prefix for images
-  const r2PublicUrl = process.env.R2_PUBLIC_URL || "";
   const processedImages = images.map((img) => ({
     ...img,
-    imageUrl: r2PublicUrl
-      ? `${r2PublicUrl}/${img.imagePath}`
-      : `/${img.imagePath}`,
+    imageUrl: resolveImageUrl(img.imagePath),
   }));
 
   return NextResponse.json({
