@@ -49,8 +49,8 @@ next-env.d.ts
 # Calligraphy images (stored in R2 in production, only placeholder for dev)
 /public/placeholder/
 
-# Drizzle generated migrations (optional — commit these if you want to track schema history)
-/drizzle/
+# Drizzle generated migrations are committed — they're the source of truth for
+# DB schema on fresh Fly.io volumes. Regenerate with `npx drizzle-kit generate`.
 
 # Scraped data staging
 /data/scraped/

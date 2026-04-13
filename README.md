@@ -97,6 +97,63 @@ You can also test R2 connectivity with a small SVG upload:
 npx tsx scripts/test_r2_connection.ts
 ```
 
+## Deploying to Fly.io
+
+The app is packaged for [Fly.io](https://fly.io) with a persistent SQLite volume
+for metadata and Cloudflare R2 for images.
+
+```bash
+# 1. Install flyctl and log in
+curl -L https://fly.io/install.sh | sh
+fly auth login
+
+# 2. Create the app (uses the committed fly.toml — skip initial deploy)
+fly launch --no-deploy --copy-config
+
+# 3. Create a 1GB persistent volume in your primary region (see fly.toml)
+fly volumes create shufazidian_data --size 1 --region sjc
+
+# 4. Set R2 credentials as secrets (they're injected as env vars at runtime)
+fly secrets set \
+  R2_ENDPOINT="https://<account>.r2.cloudflarestorage.com" \
+  R2_ACCESS_KEY_ID="..." \
+  R2_SECRET_ACCESS_KEY="..." \
+  R2_BUCKET_NAME="shufadictionary" \
+  R2_PUBLIC_URL="https://pub-....r2.dev"
+
+# 5. Deploy
+fly deploy
+```
+
+On every boot the container runs `scripts/fly-migrate.mjs`, which reads the
+committed Drizzle migration files under `drizzle/` and applies any that
+haven't run yet (tracked in a `__fly_migrations` table). This is idempotent
+and safe to re-run.
+
+### Seeding production data
+
+The Fly volume starts empty. To populate it:
+
+- **Reference data** (styles, calligraphers, works) — run
+  `npx tsx scripts/seed_reference.ts` against a local copy of the DB, then
+  copy it onto the Fly volume, or run the script on Fly via
+  `fly ssh console` (requires copying your dev `node_modules` up first — the
+  simpler path is to build the DB locally and upload it).
+- **Images** — run ingestion scripts locally, then push the generated images
+  to Cloudflare R2 with `scripts/upload_to_r2.py`. The app reads directly
+  from R2 via `R2_PUBLIC_URL`, so images don't need to live on the Fly
+  volume at all.
+
+### Updating the schema
+
+When you change `lib/db/schema.ts`:
+
+```bash
+npx drizzle-kit generate   # writes a new drizzle/NNNN_*.sql
+git add drizzle/ && git commit
+fly deploy                 # migrator applies the new file on boot
+```
+
 ## Project Structure
 
 ```
@@ -129,8 +186,14 @@ shufazidian/
 │   ├── seed_demo_data.ts         # Demo data for UI testing
 │   ├── ingest_mccd.py
 │   ├── ingest_zhuojg.py
-│   └── scrape_shufazidian.py
-└── data/                         # SQLite file lives here (gitignored)
+│   ├── scrape_shufazidian.py
+│   ├── upload_to_r2.py
+│   ├── fly-migrate.mjs           # Runtime SQL migrator (plain JS, no tsx)
+│   └── fly-start.sh              # Container entrypoint (migrate → server)
+├── drizzle/                      # Committed Drizzle SQL migrations
+├── Dockerfile                    # Next.js 16 + better-sqlite3 multi-stage build
+├── fly.toml                      # Fly.io app config (volume + env)
+└── data/                         # Local SQLite file lives here (gitignored)
 ```
 
 ## Database Schema
