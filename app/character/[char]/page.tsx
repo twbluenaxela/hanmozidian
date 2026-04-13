@@ -117,7 +117,7 @@ export default function CharacterPage({
         <div className="flex items-center gap-2 max-w-2xl mx-auto">
           <button
             onClick={() => router.push("/")}
-            className="px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+            className="font-display px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--accent-bright)] transition-colors"
           >
             首頁
           </button>

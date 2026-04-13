@@ -18,7 +18,7 @@ export default function ImageCard({
       onClick={onClick}
       className="flex flex-col items-center gap-1 group cursor-pointer"
     >
-      <div className="w-full aspect-square bg-[var(--card-bg)] rounded-lg overflow-hidden flex items-center justify-center group-hover:bg-[var(--card-hover)] transition-colors">
+      <div className="w-full aspect-square bg-[var(--card-bg)] rounded-lg overflow-hidden flex items-center justify-center border border-transparent group-hover:bg-[var(--card-hover)] group-hover:border-[var(--accent-dim)] transition-colors">
         <img
           src={imageUrl}
           alt={calligrapherName || "calligraphy"}
@@ -26,7 +26,7 @@ export default function ImageCard({
           className="w-full h-full object-contain p-1"
         />
       </div>
-      <span className="text-xs text-[var(--muted)] truncate w-full text-center">
+      <span className="font-display text-xs text-[var(--muted)] group-hover:text-[var(--accent)] truncate w-full text-center transition-colors">
         {calligrapherName || workName || ""}
       </span>
     </button>

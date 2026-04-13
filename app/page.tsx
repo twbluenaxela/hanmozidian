@@ -21,24 +21,25 @@ export default function HomePage() {
   return (
     <div className="flex flex-col items-center px-4 py-12 min-h-full">
       <div className="w-full max-w-2xl">
-        <h1 className="text-3xl sm:text-4xl font-bold text-center mb-2 text-[var(--foreground)]">
+        <h1 className="font-display text-inscribed text-5xl sm:text-6xl text-center mb-3">
           書法字典
         </h1>
-        <p className="text-center text-[var(--muted)] text-sm mb-8">
+        <p className="text-center text-[var(--muted)] text-xs tracking-[0.3em] uppercase mb-10">
           Chinese Calligraphy Dictionary
         </p>
 
         <SearchBar onSearch={handleSearch} placeholder="輸入一個漢字..." />
 
         <div className="mt-12">
-          <p className="text-sm text-[var(--muted)] mb-3 text-center">熱門字</p>
+          <p className="font-display text-sm text-[var(--accent-dim)] tracking-widest mb-4 text-center">
+            熱 門 字
+          </p>
           <div className="flex flex-wrap justify-center gap-2">
             {POPULAR_CHARACTERS.map((char) => (
               <button
                 key={char}
                 onClick={() => handleSearch(char)}
-                className="w-12 h-12 flex items-center justify-center text-2xl bg-[var(--card-bg)] border border-[var(--border)] rounded-lg hover:bg-[var(--card-hover)] transition-colors"
-                style={{ fontFamily: "serif" }}
+                className="font-display w-12 h-12 flex items-center justify-center text-2xl bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] hover:bg-[var(--card-hover)] hover:border-[var(--accent)] hover:text-[var(--accent-bright)] transition-colors"
               >
                 {char}
               </button>

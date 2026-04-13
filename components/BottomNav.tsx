@@ -66,12 +66,12 @@ export default function BottomNav() {
               href={item.href}
               className={`flex flex-col items-center gap-0.5 py-2 px-4 transition-colors ${
                 isActive
-                  ? "text-[var(--foreground)]"
-                  : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                  ? "text-[var(--accent)]"
+                  : "text-[var(--muted)] hover:text-[var(--accent-bright)]"
               }`}
             >
               {item.icon}
-              <span className="text-xs">{item.label}</span>
+              <span className="font-display text-xs tracking-wider">{item.label}</span>
             </Link>
           );
         })}

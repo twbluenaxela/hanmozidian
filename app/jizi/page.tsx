@@ -60,8 +60,8 @@ export default function JiziPage() {
 
   return (
     <div className="min-h-full px-4 py-6 max-w-3xl mx-auto">
-      <h1 className="text-2xl font-bold mb-1 text-[var(--foreground)]">集字</h1>
-      <p className="text-sm text-[var(--muted)] mb-6">
+      <h1 className="font-display text-inscribed text-4xl mb-1">集字</h1>
+      <p className="text-sm text-[var(--muted)] mb-6 tracking-wide">
         輸入詞句,選擇書法風格,組成作品參考
       </p>
 
@@ -79,7 +79,7 @@ export default function JiziPage() {
           }}
           placeholder="輸入詞句,例如:天下為公"
           rows={2}
-          className="w-full px-3 py-2 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] text-lg resize-none"
+          className="font-display w-full px-3 py-2 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] text-lg resize-none transition-colors"
         />
       </div>
 
@@ -91,10 +91,10 @@ export default function JiziPage() {
             <button
               key={style.slug}
               onClick={() => setSelectedStyle(style.slug)}
-              className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
+              className={`font-display px-4 py-1.5 rounded-full text-sm transition-colors ${
                 selectedStyle === style.slug
-                  ? "bg-[var(--foreground)] text-[var(--background)]"
-                  : "bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--card-hover)]"
+                  ? "bg-[var(--accent)] text-[var(--background)] border border-[var(--accent-bright)]"
+                  : "bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--card-hover)] hover:border-[var(--accent-dim)] hover:text-[var(--accent-bright)]"
               }`}
             >
               {style.nameZh}
@@ -107,9 +107,9 @@ export default function JiziPage() {
       <button
         onClick={handleCompose}
         disabled={!text.trim() || loading}
-        className="w-full py-2.5 bg-[var(--foreground)] text-[var(--background)] rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+        className="font-display tracking-widest w-full py-3 bg-[var(--accent)] text-[var(--background)] border border-[var(--accent-bright)] rounded-lg font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--accent-bright)] transition-colors"
       >
-        {loading ? "載入中..." : "集字"}
+        {loading ? "載入中..." : "集 字"}
       </button>
 
       {/* Results */}
@@ -128,7 +128,7 @@ export default function JiziPage() {
                   key={idx}
                   className="flex flex-col items-center"
                 >
-                  <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-[var(--card-bg)] rounded-lg overflow-hidden flex items-center justify-center border border-[var(--border)]">
+                  <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-[var(--card-bg)] rounded-lg overflow-hidden flex items-center justify-center border border-[var(--accent-dim)]">
                     {result.found && currentImg ? (
                       <>
                         <img
@@ -154,15 +154,12 @@ export default function JiziPage() {
                         )}
                       </>
                     ) : (
-                      <span
-                        className="text-4xl text-[var(--muted)]"
-                        style={{ fontFamily: "serif" }}
-                      >
+                      <span className="font-display text-4xl text-[var(--muted)]">
                         {result.character}
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-[var(--muted)] mt-1">
+                  <span className="font-display text-xs text-[var(--accent-dim)] mt-1">
                     {result.found
                       ? currentImg?.calligrapherName || "-"
                       : "暫無"}
