@@ -57,10 +57,17 @@ The app is designed to be populated from multiple calligraphy datasets:
 # Once you've downloaded MCCD LMDB files:
 python scripts/ingest_mccd.py --lmdb-path /path/to/mccd/lmdb
 
-# Or the zhuojg dataset:
+# zhuojg — uses the calligrapher-organized half of the dataset
+# (folder names like 楷-柳公权 encode style + author/work).
+# Smoke test first:
 python scripts/ingest_zhuojg.py \
-  --char-dir /path/to/zhuojg/character_organized \
-  --calligrapher-dir /path/to/zhuojg/calligrapher_organized
+  --calligrapher-dir data/zhuojg/chinese-calligraphy-dataset-with-calligrapher \
+  --dry-run --limit 2
+
+# Real ingest (idempotent re-runs: --clean-source resets DB rows for source=zhuojg):
+python scripts/ingest_zhuojg.py \
+  --calligrapher-dir data/zhuojg/chinese-calligraphy-dataset-with-calligrapher \
+  --output-dir public/images --db data/shufazidian.db --clean-source
 
 # Supplementary scraping:
 python scripts/scrape_shufazidian.py --characters "永和九年"
@@ -69,8 +76,12 @@ python scripts/scrape_shufazidian.py --characters "永和九年"
 Python dependencies:
 
 ```bash
-pip install lmdb Pillow tqdm requests beautifulsoup4 boto3 python-dotenv
+pip install lmdb Pillow tqdm opencc-python-reimplemented requests beautifulsoup4 boto3 python-dotenv
 ```
+
+`opencc-python-reimplemented` is used by `ingest_zhuojg.py` to convert
+simplified character labels in the dataset to traditional forms so they
+match the seeded `characters` table.
 
 ### Uploading images to Cloudflare R2
 
