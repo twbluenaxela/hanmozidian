@@ -1,30 +1,32 @@
 @import "tailwindcss";
 
 /*
- * Palette inspired by 金文 (bronze inscriptions) on vessels like the 毛公鼎 —
- * the character-carrying surfaces of ancient bronze ritual vessels, where
- * inscribed characters catch a warm gold light against an aged, smoky
- * bronze patina. Background colors are deep, warm, and nearly black;
- * accents are antique gold for interactive surfaces and highlights.
+ * Black theme with gold accents.
+ *
+ * The base palette is a neutral, near-pure black with cool-neutral cards and
+ * borders — the kind of dark canvas that lets a single inscribed character
+ * speak for itself. Gold is reserved strictly as an accent: active tab
+ * underlines, focus rings, primary CTAs, the display title, and a handful of
+ * key hover states. Everything else is neutral white-on-black so the gold
+ * actually reads as an accent instead of flooding the page.
  */
 :root {
-  /* Surfaces — nearly black but warm, like an unlit bronze vessel in shadow. */
-  --background: #0c0907;
-  --card-bg:    #1a140c;
-  --card-hover: #251c11;
-  --border:     #3a2d1c;
+  /* Surfaces — neutral near-black, not warm. */
+  --background: #0a0a0a;  /* neutral-950 */
+  --card-bg:    #141414;  /* slightly lifted from bg */
+  --card-hover: #1f1f1f;  /* neutral-800-ish */
+  --border:     #262626;  /* neutral-800 */
 
-  /* Text — ivory / rice-paper rubbings, never stark white. */
-  --foreground: #ece0c4;
-  --muted:      #8a7b5e;
+  /* Text — neutral white / gray, never warm ivory. */
+  --foreground: #e5e5e5;  /* neutral-200 */
+  --muted:      #737373;  /* neutral-500 */
+  --muted-dim:  #525252;  /* neutral-600 */
 
-  /* Gold accents — 毛公鼎-inspired antique bronze-gold for highlights. */
-  --accent:        #d4a853;  /* primary gold — hover, focus, active tabs */
-  --accent-bright: #f0c56e;  /* brighter gold — key CTAs, strong hover */
-  --accent-dim:    #8a6b2d;  /* aged gold — subdued borders, secondary */
-
-  /* Patina — deep bronze-green, reserved for rare accent shadows. */
-  --patina: #2d3a2a;
+  /* Gold accent — used sparingly. Inspired by antique 毛公鼎 bronze gold
+     but only as a highlight, never as a base surface. */
+  --accent:        #d4a853;  /* primary gold */
+  --accent-bright: #f0c56e;  /* brighter gold for key CTAs */
+  --accent-dim:    #6b5322;  /* deep aged gold for subtle borders */
 }
 
 @theme inline {
@@ -34,29 +36,19 @@
   --color-card-hover: var(--card-hover);
   --color-border:     var(--border);
   --color-muted:      var(--muted);
+  --color-muted-dim:  var(--muted-dim);
   --color-accent:     var(--accent);
   --color-accent-bright: var(--accent-bright);
   --color-accent-dim:    var(--accent-dim);
-  --color-patina:     var(--patina);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
-
-  /* Subtle bronze-vessel gradient — warmer toward the top, deeper toward
-     the bottom, as if light were falling on the curved surface of a ding. */
-  background-image:
-    radial-gradient(
-      ellipse 80% 50% at 50% 0%,
-      rgba(212, 168, 83, 0.05) 0%,
-      transparent 60%
-    );
-  background-attachment: fixed;
 }
 
-/* Utility class for the 書法字典 title and other display Chinese text —
+/* Display face for 書法字典 title and other Chinese display text —
    serif gives it a stone-rubbing feel. */
 .font-display {
   font-family: "Noto Serif TC", "Songti TC", "STSong", "SimSun", serif;
@@ -64,8 +56,15 @@ body {
   letter-spacing: 0.05em;
 }
 
-/* Soft gold text-shadow for inscribed characters catching the light. */
+/* Gold inscribed headline — ONLY used for the main display title,
+   never for body copy. */
 .text-inscribed {
   color: var(--accent);
-  text-shadow: 0 0 20px rgba(212, 168, 83, 0.25);
+  text-shadow: 0 0 24px rgba(212, 168, 83, 0.18);
+}
+
+/* A thin gold hairline used to signal active state under tabs, etc.
+   Cheaper visually than filling the whole element. */
+.accent-underline {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
 }

@@ -60,7 +60,9 @@ export default function JiziPage() {
 
   return (
     <div className="min-h-full px-4 py-6 max-w-3xl mx-auto">
-      <h1 className="font-display text-inscribed text-4xl mb-1">集字</h1>
+      <h1 className="font-display text-[var(--foreground)] text-4xl mb-1">
+        集字
+      </h1>
       <p className="text-sm text-[var(--muted)] mb-6 tracking-wide">
         輸入詞句,選擇書法風格,組成作品參考
       </p>
@@ -93,8 +95,8 @@ export default function JiziPage() {
               onClick={() => setSelectedStyle(style.slug)}
               className={`font-display px-4 py-1.5 rounded-full text-sm transition-colors ${
                 selectedStyle === style.slug
-                  ? "bg-[var(--accent)] text-[var(--background)] border border-[var(--accent-bright)]"
-                  : "bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--card-hover)] hover:border-[var(--accent-dim)] hover:text-[var(--accent-bright)]"
+                  ? "bg-[var(--card-hover)] border border-[var(--accent)] text-[var(--accent)]"
+                  : "bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:bg-[var(--card-hover)] hover:border-[var(--muted-dim)]"
               }`}
             >
               {style.nameZh}
@@ -107,7 +109,7 @@ export default function JiziPage() {
       <button
         onClick={handleCompose}
         disabled={!text.trim() || loading}
-        className="font-display tracking-widest w-full py-3 bg-[var(--accent)] text-[var(--background)] border border-[var(--accent-bright)] rounded-lg font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--accent-bright)] transition-colors"
+        className="font-display tracking-widest w-full py-3 bg-transparent text-[var(--accent)] border border-[var(--accent)] rounded-lg font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--accent)] hover:text-[var(--background)] transition-colors"
       >
         {loading ? "載入中..." : "集 字"}
       </button>
@@ -128,7 +130,7 @@ export default function JiziPage() {
                   key={idx}
                   className="flex flex-col items-center"
                 >
-                  <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-[var(--card-bg)] rounded-lg overflow-hidden flex items-center justify-center border border-[var(--accent-dim)]">
+                  <div className="relative w-28 h-28 sm:w-32 sm:h-32 bg-[var(--card-bg)] rounded-lg overflow-hidden flex items-center justify-center border border-[var(--border)]">
                     {result.found && currentImg ? (
                       <>
                         <img
@@ -140,13 +142,13 @@ export default function JiziPage() {
                           <>
                             <button
                               onClick={() => cycleCharacter(idx, -1)}
-                              className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-8 flex items-center justify-center bg-black/50 text-white text-xs hover:bg-black/70"
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-8 flex items-center justify-center bg-black/60 text-[var(--foreground)] text-xs hover:bg-black/80 hover:text-[var(--accent)]"
                             >
                               ‹
                             </button>
                             <button
                               onClick={() => cycleCharacter(idx, 1)}
-                              className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-8 flex items-center justify-center bg-black/50 text-white text-xs hover:bg-black/70"
+                              className="absolute right-0 top-1/2 -translate-y-1/2 w-6 h-8 flex items-center justify-center bg-black/60 text-[var(--foreground)] text-xs hover:bg-black/80 hover:text-[var(--accent)]"
                             >
                               ›
                             </button>
@@ -154,12 +156,12 @@ export default function JiziPage() {
                         )}
                       </>
                     ) : (
-                      <span className="font-display text-4xl text-[var(--muted)]">
+                      <span className="font-display text-4xl text-[var(--muted-dim)]">
                         {result.character}
                       </span>
                     )}
                   </div>
-                  <span className="font-display text-xs text-[var(--accent-dim)] mt-1">
+                  <span className="font-display text-xs text-[var(--muted)] mt-1">
                     {result.found
                       ? currentImg?.calligrapherName || "-"
                       : "暫無"}

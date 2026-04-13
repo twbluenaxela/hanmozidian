@@ -24,14 +24,14 @@ export default function HomePage() {
         <h1 className="font-display text-inscribed text-5xl sm:text-6xl text-center mb-3">
           書法字典
         </h1>
-        <p className="text-center text-[var(--muted)] text-xs tracking-[0.3em] uppercase mb-10">
+        <p className="text-center text-[var(--muted-dim)] text-xs tracking-[0.3em] uppercase mb-10">
           Chinese Calligraphy Dictionary
         </p>
 
         <SearchBar onSearch={handleSearch} placeholder="輸入一個漢字..." />
 
         <div className="mt-12">
-          <p className="font-display text-sm text-[var(--accent-dim)] tracking-widest mb-4 text-center">
+          <p className="font-display text-xs text-[var(--muted)] tracking-[0.3em] mb-4 text-center uppercase">
             熱 門 字
           </p>
           <div className="flex flex-wrap justify-center gap-2">
@@ -39,7 +39,7 @@ export default function HomePage() {
               <button
                 key={char}
                 onClick={() => handleSearch(char)}
-                className="font-display w-12 h-12 flex items-center justify-center text-2xl bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] hover:bg-[var(--card-hover)] hover:border-[var(--accent)] hover:text-[var(--accent-bright)] transition-colors"
+                className="font-display w-12 h-12 flex items-center justify-center text-2xl bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] hover:bg-[var(--card-hover)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
               >
                 {char}
               </button>
