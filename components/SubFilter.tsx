@@ -32,8 +32,8 @@ export default function SubFilter({
           onClick={() => onFilterModeChange("author")}
           className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
             filterMode === "author"
-              ? "bg-[var(--foreground)] text-[var(--background)]"
-              : "text-[var(--muted)] hover:text-[var(--foreground)]"
+              ? "bg-[var(--accent)] text-[var(--background)]"
+              : "text-[var(--muted)] hover:text-[var(--accent-bright)]"
           }`}
         >
           作者
@@ -42,8 +42,8 @@ export default function SubFilter({
           onClick={() => onFilterModeChange("work")}
           className={`px-4 py-1.5 rounded-full text-sm transition-colors ${
             filterMode === "work"
-              ? "bg-[var(--foreground)] text-[var(--background)]"
-              : "text-[var(--muted)] hover:text-[var(--foreground)]"
+              ? "bg-[var(--accent)] text-[var(--background)]"
+              : "text-[var(--muted)] hover:text-[var(--accent-bright)]"
           }`}
         >
           作品
@@ -53,7 +53,7 @@ export default function SubFilter({
       <div className="relative">
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
+          className="flex items-center gap-1 text-sm text-[var(--muted)] hover:text-[var(--accent-bright)]"
         >
           篩選
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

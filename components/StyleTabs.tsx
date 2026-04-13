@@ -39,18 +39,18 @@ export default function StyleTabs({
             onClick={() => onStyleChange(style.slug)}
             className={`flex-1 py-3 px-2 text-center relative transition-colors ${
               isActive
-                ? "text-[var(--foreground)]"
-                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                ? "text-[var(--accent)]"
+                : "text-[var(--muted)] hover:text-[var(--accent-bright)]"
             }`}
           >
-            <span className="text-base">{style.nameZh}</span>
+            <span className="font-display text-lg">{style.nameZh}</span>
             {count > 0 && (
-              <sup className="ml-0.5 text-xs">
+              <sup className="ml-0.5 text-xs text-[var(--muted)]">
                 {count > 20 ? "20+" : count}
               </sup>
             )}
             {isActive && (
-              <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-[var(--foreground)]" />
+              <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-[var(--accent)]" />
             )}
           </button>
         );

@@ -49,12 +49,12 @@ export default function SearchBar({
             }
           }}
           placeholder={placeholder}
-          className="w-full pl-10 pr-4 py-2.5 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] text-lg"
+          className="font-display w-full pl-10 pr-4 py-2.5 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] placeholder:text-[var(--muted)] focus:outline-none focus:border-[var(--accent)] focus:ring-1 focus:ring-[var(--accent)] text-lg transition-colors"
         />
       </div>
       <button
         onClick={handleSubmit}
-        className="px-4 py-2.5 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] hover:bg-[var(--card-hover)] transition-colors"
+        className="font-display px-4 py-2.5 bg-[var(--card-bg)] border border-[var(--border)] rounded-lg text-[var(--foreground)] hover:bg-[var(--card-hover)] hover:border-[var(--accent)] hover:text-[var(--accent-bright)] transition-colors"
       >
         搜索
       </button>
