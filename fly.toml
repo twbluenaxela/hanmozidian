@@ -1,0 +1,45 @@
+# Fly.io configuration for shufazidian.
+#
+# First-time setup:
+#   fly launch --no-deploy --copy-config
+#   fly volumes create shufazidian_data --size 1 --region sjc
+#   fly secrets set R2_ENDPOINT=... R2_ACCESS_KEY_ID=... R2_SECRET_ACCESS_KEY=... \
+#                   R2_BUCKET_NAME=shufadictionary R2_PUBLIC_URL=https://pub-....r2.dev
+#   fly deploy
+#
+# After deploy, seed reference data one-time via:
+#   fly ssh console -C "node scripts/fly-migrate.mjs"   # already runs on boot
+#
+# You will probably want to seed reference data + images from your local
+# machine, then snapshot the volume — the app does not ship seed logic at boot.
+
+app = "shufazidian"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV      = "production"
+  PORT          = "3000"
+  HOSTNAME      = "0.0.0.0"
+  DATABASE_PATH = "/data/shufazidian.db"
+  # R2 credentials are set via `fly secrets` so they don't end up in git.
+  # R2_PUBLIC_URL is public anyway, but we keep it as a secret for consistency.
+
+[[mounts]]
+  source      = "shufazidian_data"
+  destination = "/data"
+
+[http_service]
+  internal_port       = 3000
+  force_https         = true
+  auto_stop_machines  = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes           = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1

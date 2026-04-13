@@ -1,0 +1,22 @@
+Dockerfile
+.dockerignore
+.git
+.gitignore
+.github
+node_modules
+.next
+out
+coverage
+.vscode
+.idea
+*.log
+.env*
+# Keep placeholder images OUT of the image — they're dev-only.
+public/placeholder
+# Local SQLite — container mounts a fresh one from /data.
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+data/scraped
+README.md

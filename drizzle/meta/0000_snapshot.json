@@ -1,0 +1,395 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "152a6e53-8fa2-4a8d-9316-41a3ad5a9c7f",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "calligraphers": {
+      "name": "calligraphers",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name_zh": {
+          "name": "name_zh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name_en": {
+          "name": "name_en",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "dynasty": {
+          "name": "dynasty",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_calligraphers_dynasty": {
+          "name": "idx_calligraphers_dynasty",
+          "columns": [
+            "dynasty"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "calligraphy_images": {
+      "name": "calligraphy_images",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "character_id": {
+          "name": "character_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "style_id": {
+          "name": "style_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "calligrapher_id": {
+          "name": "calligrapher_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "work_id": {
+          "name": "work_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "image_path": {
+          "name": "image_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_images_char_style": {
+          "name": "idx_images_char_style",
+          "columns": [
+            "character_id",
+            "style_id"
+          ],
+          "isUnique": false
+        },
+        "idx_images_char_style_calligrapher": {
+          "name": "idx_images_char_style_calligrapher",
+          "columns": [
+            "character_id",
+            "style_id",
+            "calligrapher_id"
+          ],
+          "isUnique": false
+        },
+        "idx_images_calligrapher": {
+          "name": "idx_images_calligrapher",
+          "columns": [
+            "calligrapher_id"
+          ],
+          "isUnique": false
+        },
+        "idx_images_work": {
+          "name": "idx_images_work",
+          "columns": [
+            "work_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "calligraphy_images_character_id_characters_id_fk": {
+          "name": "calligraphy_images_character_id_characters_id_fk",
+          "tableFrom": "calligraphy_images",
+          "tableTo": "characters",
+          "columnsFrom": [
+            "character_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "calligraphy_images_style_id_script_styles_id_fk": {
+          "name": "calligraphy_images_style_id_script_styles_id_fk",
+          "tableFrom": "calligraphy_images",
+          "tableTo": "script_styles",
+          "columnsFrom": [
+            "style_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "calligraphy_images_calligrapher_id_calligraphers_id_fk": {
+          "name": "calligraphy_images_calligrapher_id_calligraphers_id_fk",
+          "tableFrom": "calligraphy_images",
+          "tableTo": "calligraphers",
+          "columnsFrom": [
+            "calligrapher_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "calligraphy_images_work_id_works_id_fk": {
+          "name": "calligraphy_images_work_id_works_id_fk",
+          "tableFrom": "calligraphy_images",
+          "tableTo": "works",
+          "columnsFrom": [
+            "work_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "characters": {
+      "name": "characters",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "character": {
+          "name": "character",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "unicode_hex": {
+          "name": "unicode_hex",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "characters_character_unique": {
+          "name": "characters_character_unique",
+          "columns": [
+            "character"
+          ],
+          "isUnique": true
+        },
+        "characters_unicode_hex_unique": {
+          "name": "characters_unicode_hex_unique",
+          "columns": [
+            "unicode_hex"
+          ],
+          "isUnique": true
+        },
+        "idx_characters_char": {
+          "name": "idx_characters_char",
+          "columns": [
+            "character"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "script_styles": {
+      "name": "script_styles",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name_zh": {
+          "name": "name_zh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name_en": {
+          "name": "name_en",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "script_styles_slug_unique": {
+          "name": "script_styles_slug_unique",
+          "columns": [
+            "slug"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "works": {
+      "name": "works",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "name_zh": {
+          "name": "name_zh",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "calligrapher_id": {
+          "name": "calligrapher_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "style_id": {
+          "name": "style_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "idx_works_calligrapher": {
+          "name": "idx_works_calligrapher",
+          "columns": [
+            "calligrapher_id"
+          ],
+          "isUnique": false
+        },
+        "idx_works_style": {
+          "name": "idx_works_style",
+          "columns": [
+            "style_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "works_calligrapher_id_calligraphers_id_fk": {
+          "name": "works_calligrapher_id_calligraphers_id_fk",
+          "tableFrom": "works",
+          "tableTo": "calligraphers",
+          "columnsFrom": [
+            "calligrapher_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "works_style_id_script_styles_id_fk": {
+          "name": "works_style_id_script_styles_id_fk",
+          "tableFrom": "works",
+          "tableTo": "script_styles",
+          "columnsFrom": [
+            "style_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}
