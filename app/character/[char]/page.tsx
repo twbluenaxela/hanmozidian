@@ -119,7 +119,7 @@ export default function CharacterPage({
             onClick={() => router.push("/")}
             className="px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--foreground)]"
           >
-            全部字
+            首頁
           </button>
           <div className="flex-1">
             <SearchBar onSearch={handleSearch} initialValue={char} />
