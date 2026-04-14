@@ -51,7 +51,6 @@ next-env.d.ts
 /data/zhuojg/
 
 # Locally generated calligraphy images (uploaded to R2 in production)
-/public/placeholder/
 /public/images/
 
 # Python bytecode caches from ingestion / scrape scripts

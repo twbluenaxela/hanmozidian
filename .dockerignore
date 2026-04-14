@@ -11,8 +11,6 @@ coverage
 .idea
 *.log
 .env*
-# Keep placeholder images OUT of the image — they're dev-only.
-public/placeholder
 # Local SQLite — container mounts a fresh one from /data.
 data/*.db
 data/*.db-journal

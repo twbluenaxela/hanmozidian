@@ -21,12 +21,17 @@ Usage:
 
   # Upload and remove local copies after successful upload:
   python scripts/upload_to_r2.py --cleanup
+
+  # Tune parallelism (default 8 threads):
+  python scripts/upload_to_r2.py --workers 16
 """
 
 import argparse
 import os
 import sqlite3
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 try:
@@ -62,7 +67,7 @@ MIME_TYPES = {
 }
 
 
-def get_r2_client():
+def get_r2_client(max_pool_connections: int = 16):
     """Create an S3 client configured for Cloudflare R2."""
     if not all([R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME]):
         print("Error: R2 credentials missing in .env.local")
@@ -78,6 +83,7 @@ def get_r2_client():
         config=Config(
             signature_version="s3v4",
             s3={"addressing_style": "path"},
+            max_pool_connections=max_pool_connections,
         ),
     )
 
@@ -161,6 +167,7 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Show what would be uploaded")
     parser.add_argument("--cleanup", action="store_true", help="Delete local files after upload")
     parser.add_argument("--overwrite", action="store_true", help="Re-upload files that already exist in R2")
+    parser.add_argument("--workers", type=int, default=8, help="Number of parallel upload threads (default: 8)")
     args = parser.parse_args()
 
     source_dir = Path(args.source)
@@ -184,7 +191,9 @@ def main():
             print(f"  ... and {len(files) - 10} more")
         return
 
-    client = get_r2_client()
+    # Size the connection pool slightly above the worker count so threads
+    # never block waiting for a connection.
+    client = get_r2_client(max_pool_connections=max(args.workers * 2, 16))
     verify_connection(client)
 
     # Check existing keys if we should skip them
@@ -200,25 +209,33 @@ def main():
         except ClientError as e:
             print(f"  Warning: could not list bucket: {e}")
 
+    pending = [(p, k) for p, k in files if args.overwrite or k not in existing_keys]
+    skipped = len(files) - len(pending)
     uploaded = 0
-    skipped = 0
     failed = 0
     uploaded_keys = set()
+    lock = threading.Lock()
 
-    for local_path, key in tqdm(files, desc="Uploading"):
-        if key in existing_keys and not args.overwrite:
-            skipped += 1
-            continue
-        if upload_file(client, local_path, key):
-            uploaded += 1
-            uploaded_keys.add(key)
-            if args.cleanup:
-                try:
-                    local_path.unlink()
-                except OSError as e:
-                    print(f"  Warning: could not delete {local_path}: {e}")
-        else:
-            failed += 1
+    def _upload_one(item):
+        local_path, key = item
+        ok = upload_file(client, local_path, key)
+        if ok and args.cleanup:
+            try:
+                local_path.unlink()
+            except OSError as e:
+                print(f"  Warning: could not delete {local_path}: {e}")
+        return ok, key
+
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        futures = [pool.submit(_upload_one, item) for item in pending]
+        for fut in tqdm(as_completed(futures), total=len(futures), desc="Uploading"):
+            ok, key = fut.result()
+            with lock:
+                if ok:
+                    uploaded += 1
+                    uploaded_keys.add(key)
+                else:
+                    failed += 1
 
     print()
     print(f"Uploaded: {uploaded}")

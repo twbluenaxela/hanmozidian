@@ -11,7 +11,7 @@ A reference tool for calligraphers to look up how famous historical calligrapher
 
 - **Frontend**: Next.js 16 (App Router) + TypeScript + Tailwind CSS
 - **Database**: SQLite (via `better-sqlite3`) + Drizzle ORM for metadata
-- **Image Storage**: Cloudflare R2 in production (local `public/placeholder/` in dev)
+- **Image Storage**: Cloudflare R2 in production, local `public/images/` in dev
 - **Data Scripts**: Python (for dataset ingestion + scraping)
 
 ## Getting Started
@@ -20,7 +20,7 @@ A reference tool for calligraphers to look up how famous historical calligrapher
 npm install
 npx drizzle-kit push                 # create SQLite database schema
 npx tsx scripts/seed_reference.ts    # seed styles, calligraphers, works
-npx tsx scripts/seed_demo_data.ts    # seed placeholder images for UI testing
+# Then run an ingestion script (see Data Sources below) to populate images.
 npm run dev
 ```
 
@@ -98,8 +98,11 @@ Once ingestion has produced images under `public/images/`, upload them to R2:
 # Dry run to see what would be uploaded
 python scripts/upload_to_r2.py --dry-run
 
-# Actually upload (skips files already in R2)
+# Actually upload (skips files already in R2, 8 parallel threads by default)
 python scripts/upload_to_r2.py
+
+# Tune parallelism for bigger runs (e.g. the full zhuojg ingest at ~138k files)
+python scripts/upload_to_r2.py --workers 16
 
 # Upload and delete local copies after success
 python scripts/upload_to_r2.py --cleanup
@@ -203,7 +206,6 @@ shufazidian/
 │   └── utils.ts
 ├── scripts/
 │   ├── seed_reference.ts         # Seed styles, calligraphers, works
-│   ├── seed_demo_data.ts         # Demo data for UI testing
 │   ├── ingest_mccd.py
 │   ├── ingest_zhuojg.py
 │   ├── scrape_shufazidian.py
