@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       workId,
       page: 1,
       limit: 10,
+      random: true,
     });
 
     results.push({
