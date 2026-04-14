@@ -34,9 +34,16 @@ R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=shufazidian
 R2_PUBLIC_URL=
+USE_R2=false
 ```
 
-Leave `R2_PUBLIC_URL` empty to serve images from the local `public/` directory during development. Set it to your R2 public URL (or custom domain) once you've uploaded images to R2.
+The app only rewrites `<img>` URLs to the R2 public bucket when `USE_R2=true`
+AND `R2_PUBLIC_URL` is set. In development, keep `USE_R2` unset (or `false`)
+so images are served straight from `public/images/` — this way you can keep
+the upload-script credentials (`R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, etc.) in
+`.env.local` without every `<img>` 404ing against an empty R2 bucket. In
+production, set both `USE_R2=true` and `R2_PUBLIC_URL` to your R2 public URL
+(or custom domain) once you've uploaded images to R2.
 
 ## Data Sources
 
@@ -98,9 +105,10 @@ python scripts/upload_to_r2.py
 python scripts/upload_to_r2.py --cleanup
 ```
 
-The script reads R2 credentials from `.env.local`. Once `R2_PUBLIC_URL` is set,
-the Next.js app automatically serves images from R2 instead of the local
-`public/` directory for any image whose path starts with `images/`.
+The script reads R2 credentials from `.env.local`. Once `R2_PUBLIC_URL` is set
+and `USE_R2=true` is exported, the Next.js app serves images from R2 instead
+of the local `public/` directory for any image whose path starts with
+`images/`. Leave `USE_R2` unset on dev machines that haven't uploaded yet.
 
 You can also test R2 connectivity with a small SVG upload:
 
@@ -130,7 +138,8 @@ fly secrets set \
   R2_ACCESS_KEY_ID="..." \
   R2_SECRET_ACCESS_KEY="..." \
   R2_BUCKET_NAME="shufadictionary" \
-  R2_PUBLIC_URL="https://pub-....r2.dev"
+  R2_PUBLIC_URL="https://pub-....r2.dev" \
+  USE_R2="true"
 
 # 5. Deploy
 fly deploy
