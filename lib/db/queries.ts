@@ -53,8 +53,17 @@ export function getImages(opts: {
   workId?: number;
   page?: number;
   limit?: number;
+  random?: boolean;
 }) {
-  const { characterId, styleSlug, calligrapherId, workId, page = 1, limit = 50 } = opts;
+  const {
+    characterId,
+    styleSlug,
+    calligrapherId,
+    workId,
+    page = 1,
+    limit = 50,
+    random = false,
+  } = opts;
 
   const conditions = [eq(calligraphyImages.characterId, characterId)];
 
@@ -95,6 +104,7 @@ export function getImages(opts: {
     .leftJoin(works, eq(calligraphyImages.workId, works.id))
     .innerJoin(scriptStyles, eq(calligraphyImages.styleId, scriptStyles.id))
     .where(and(...conditions))
+    .orderBy(random ? sql`RANDOM()` : calligraphyImages.id)
     .limit(limit)
     .offset(offset)
     .all();
