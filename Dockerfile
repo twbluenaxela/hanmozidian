@@ -58,7 +58,7 @@ RUN groupadd --system --gid 1001 nodejs \
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 # Static assets — Next doesn't copy these into standalone automatically.
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static     ./.next/static
-# Public folder (placeholder images + favicons).
+# Public folder (favicons + SVG icons; calligraphy images live on R2).
 COPY --from=builder --chown=nextjs:nodejs /app/public           ./public
 
 # Drizzle migration files + the plain-JS migrator and entrypoint script.

@@ -10,8 +10,6 @@ export function charToUnicodeHex(char: string): string {
  * public/ locally. This lets dev machines keep R2 credentials in .env.local
  * for the upload script without having every <img> 404 against an R2 bucket
  * that may not be populated yet.
- *
- * Paths starting with anything else (e.g. "placeholder/") are always local.
  */
 export function resolveImageUrl(imagePath: string): string {
   const useR2 = process.env.USE_R2 === "true";
