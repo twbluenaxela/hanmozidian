@@ -73,9 +73,10 @@ export function getImages(opts: {
       .from(scriptStyles)
       .where(eq(scriptStyles.slug, styleSlug))
       .get();
-    if (style) {
-      conditions.push(eq(calligraphyImages.styleId, style.id));
-    }
+    // FIX: If style is requested but not found, return empty array immediately
+    if (!style) return []; 
+    
+    conditions.push(eq(calligraphyImages.styleId, style.id));
   }
 
   if (calligrapherIds && calligrapherIds.length > 0) {
