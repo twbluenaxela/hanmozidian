@@ -41,7 +41,8 @@ try:
     from dotenv import load_dotenv
     from tqdm import tqdm
 except ImportError as e:
-    print(f"Missing dependency: {e.name}")
+    missing = getattr(e, 'name', str(e))
+    print(f"Missing dependency: {missing}")
     print("Install with: pip install boto3 python-dotenv tqdm")
     sys.exit(1)
 
@@ -101,9 +102,6 @@ def verify_connection(client):
 def collect_files(source_dir: Path):
     """Yield (local_path, r2_key) pairs for every image under source_dir."""
     supported_exts = set(MIME_TYPES.keys())
-    # The directory containing source_dir forms the prefix.
-    # e.g. public/images/kai/6C38/001.webp → key: images/kai/6C38/001.webp
-    # The "public/" prefix is stripped so R2 keys start at "images/".
     for path in source_dir.rglob("*"):
         if not path.is_file():
             continue
@@ -141,8 +139,7 @@ def upload_file(client, local_path: Path, key: str) -> bool:
 
 def update_db_paths(db_path: Path, uploaded_keys: set):
     """
-    The database already stores paths relative to public/ (e.g. "images/kai/6C38/001.webp")
-    which match the R2 keys, so no column update is needed. We just verify.
+    Verify DB records against R2-compatible paths.
     """
     if not db_path.exists():
         print(f"Note: database {db_path} not found, skipping DB update.")
@@ -173,7 +170,6 @@ def main():
     source_dir = Path(args.source)
     if not source_dir.exists():
         print(f"Error: source directory {source_dir} does not exist.")
-        print("Run an ingestion script first (e.g., scripts/ingest_zhuojg.py) to populate it.")
         sys.exit(1)
 
     files = list(collect_files(source_dir))
@@ -189,7 +185,7 @@ def main():
             print(f"  would upload: {local_path}  →  {key}")
         if len(files) > 10:
             print(f"  ... and {len(files) - 10} more")
-        return
+        return 0
 
     # Size the connection pool slightly above the worker count so threads
     # never block waiting for a connection.
@@ -247,7 +243,8 @@ def main():
         print(f"\nSample public URL: {R2_PUBLIC_URL}/{sample}")
 
     update_db_paths(Path(args.db), uploaded_keys)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
