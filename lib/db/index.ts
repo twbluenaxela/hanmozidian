@@ -4,8 +4,8 @@ import * as schema from "./schema";
 import fs from "fs";
 import path from "path";
 
-// On Fly.io, mount a persistent volume at /data and set DATABASE_PATH=/data/shufazidian.db.
-// Locally, defaults to ./data/shufazidian.db relative to the project root.
+// On Fly.io, the populated SQLite metadata DB is baked into the image at
+// /app/data/shufazidian.db (see Dockerfile + scripts/fly-start.sh).
 const dbPath =
   process.env.DATABASE_PATH || path.join(process.cwd(), "data", "shufazidian.db");
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import JiziPicker, { type JiziPickerSelection } from "@/components/JiziPicker";
 
 interface ImageData {
   id: number;
@@ -20,7 +21,15 @@ interface CharacterResult {
   images: ImageData[];
 }
 
+// Light-weight mirror of CoverageResponse — we only need names for the
+// applied-selection chip strip below the input. Avoids a second fetch.
+interface FacetMeta {
+  calligraphers: Record<number, string>;
+  works: Record<number, string>;
+}
+
 const STYLES = [
+  { slug: "jinwen", nameZh: "金文" },
   { slug: "zhuan", nameZh: "篆書" },
   { slug: "li", nameZh: "隸書" },
   { slug: "kai", nameZh: "楷書" },
@@ -37,17 +46,81 @@ export default function JiziPage() {
   const [selections, setSelections] = useState<Record<number, number>>({});
   const isComposing = useRef(false);
 
+  // Picker state
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedCalligraphers, setSelectedCalligraphers] = useState<number[]>([]);
+  const [selectedWorks, setSelectedWorks] = useState<number[]>([]);
+  const [facetMeta, setFacetMeta] = useState<FacetMeta>({
+    calligraphers: {},
+    works: {},
+  });
+
+  // Clear picker filters whenever the input or style changes — stale
+  // filters don't make sense against a different phrase.
+  useEffect(() => {
+    setSelectedCalligraphers([]);
+    setSelectedWorks([]);
+  }, [text, selectedStyle]);
+
   const handleCompose = useCallback(async () => {
     if (!text.trim()) return;
     setLoading(true);
     setSelections({});
 
-    const params = new URLSearchParams({ text: text.trim(), style: selectedStyle });
+    const params = new URLSearchParams({ 
+      text: text.trim(), 
+      style: selectedStyle 
+    });
+
+    if (selectedCalligraphers.length > 0) {
+      params.set("calligrapher", selectedCalligraphers.join(","));
+    }
+    if (selectedWorks.length > 0) {
+      params.set("work", selectedWorks.join(","));
+    }
+
     const res = await fetch(`/api/jizi?${params}`);
     const data = await res.json();
     setResults(data.characters || []);
     setLoading(false);
-  }, [text, selectedStyle]);
+  }, [text, selectedStyle, selectedCalligraphers, selectedWorks]);
+
+  const handlePickerApply = useCallback(
+    async (next: JiziPickerSelection) => {
+      setSelectedCalligraphers(next.calligraphers);
+      setSelectedWorks(next.works);
+
+      // Refresh name lookup so the chip strip below the input can show
+      // something meaningful. Reuse the coverage endpoint — it returns
+      // every calligrapher + work for the current phrase.
+      if (text.trim()) {
+        const params = new URLSearchParams({
+          text: text.trim(),
+          style: selectedStyle,
+        });
+        try {
+          const res = await fetch(`/api/jizi/coverage?${params.toString()}`);
+          const data = await res.json();
+          const cMap: Record<number, string> = {};
+          const wMap: Record<number, string> = {};
+          for (const c of data.calligraphers || []) cMap[c.id] = c.nameZh;
+          for (const w of data.works || []) wMap[w.id] = w.nameZh;
+          setFacetMeta({ calligraphers: cMap, works: wMap });
+        } catch {
+          // Non-fatal: chips fall back to "#id" rendering.
+        }
+      }
+    },
+    [text, selectedStyle]
+  );
+
+  const removeCalligrapher = (id: number) => {
+    setSelectedCalligraphers((prev) => prev.filter((x) => x !== id));
+  };
+
+  const removeWork = (id: number) => {
+    setSelectedWorks((prev) => prev.filter((x) => x !== id));
+  };
 
   const cycleCharacter = (position: number, direction: 1 | -1) => {
     setSelections((prev) => {
@@ -105,14 +178,54 @@ export default function JiziPage() {
         </div>
       </div>
 
-      {/* Compose button */}
-      <button
-        onClick={handleCompose}
-        disabled={!text.trim() || loading}
-        className="font-display tracking-widest w-full py-3 bg-transparent text-[var(--accent)] border border-[var(--accent)] rounded-lg font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--accent)] hover:text-[var(--background)] transition-colors"
-      >
-        {loading ? "載入中..." : "集 字"}
-      </button>
+      {/* Compose + filter buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={handleCompose}
+          disabled={!text.trim() || loading}
+          className="font-display tracking-widest flex-1 py-3 bg-transparent text-[var(--accent)] border border-[var(--accent)] rounded-lg font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-[var(--accent)] hover:text-[var(--background)] transition-colors"
+        >
+          {loading ? "載入中..." : "集 字"}
+        </button>
+        <button
+          onClick={() => setPickerOpen(true)}
+          disabled={!text.trim()}
+          className="font-display px-5 py-3 bg-transparent text-[var(--muted)] border border-[var(--border)] rounded-lg disabled:opacity-30 disabled:cursor-not-allowed hover:text-[var(--accent)] hover:border-[var(--muted-dim)] transition-colors"
+        >
+          篩選
+          {(selectedCalligraphers.length + selectedWorks.length) > 0 && (
+            <span className="ml-1 text-[var(--accent)]">
+              ({selectedCalligraphers.length + selectedWorks.length})
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Active selection chip strip */}
+      {(selectedCalligraphers.length > 0 || selectedWorks.length > 0) && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {selectedCalligraphers.map((id) => (
+            <button
+              key={`c-${id}`}
+              onClick={() => removeCalligrapher(id)}
+              className="font-display text-xs px-3 py-1 rounded-full border border-[var(--accent)] text-[var(--accent)] bg-[var(--card-hover)] hover:bg-[var(--card-bg)] transition-colors flex items-center gap-1"
+            >
+              {facetMeta.calligraphers[id] ?? `#${id}`}
+              <span className="text-[var(--muted)]">×</span>
+            </button>
+          ))}
+          {selectedWorks.map((id) => (
+            <button
+              key={`w-${id}`}
+              onClick={() => removeWork(id)}
+              className="font-display text-xs px-3 py-1 rounded-full border border-[var(--accent)] text-[var(--accent)] bg-[var(--card-hover)] hover:bg-[var(--card-bg)] transition-colors flex items-center gap-1"
+            >
+              {facetMeta.works[id] ?? `#${id}`}
+              <span className="text-[var(--muted)]">×</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Results */}
       {results.length > 0 && (
@@ -177,6 +290,16 @@ export default function JiziPage() {
           </div>
         </div>
       )}
+
+      <JiziPicker
+        text={text}
+        style={selectedStyle}
+        open={pickerOpen}
+        selectedCalligraphers={selectedCalligraphers}
+        selectedWorks={selectedWorks}
+        onApply={handlePickerApply}
+        onClose={() => setPickerOpen(false)}
+      />
     </div>
   );
 }

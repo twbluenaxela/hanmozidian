@@ -8,8 +8,10 @@
 #   2. builder — run `next build` to emit the .next/standalone bundle
 #   3. runner  — minimal runtime image with the standalone server + native deps
 #
-# The SQLite database lives on a persistent volume mounted at /data. Set
-# DATABASE_PATH=/data/shufazidian.db in fly.toml so the app writes there.
+# The populated SQLite metadata DB is baked into the image at
+# /app/data/shufazidian.db. It's read-mostly at runtime (the app only
+# reads; writes only happen locally via the ingest scripts), and fresh
+# data ships with each `fly deploy`. Image binaries live on R2.
 # ----------------------------------------------------------------------------
 
 ARG NODE_VERSION=22-bookworm-slim
@@ -62,17 +64,17 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static     ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public           ./public
 
 # Drizzle migration files + the plain-JS migrator and entrypoint script.
-# The migrator uses `better-sqlite3`, which the standalone bundle already
-# contains thanks to outputFileTracingIncludes in next.config.ts.
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle          ./drizzle
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/fly-migrate.mjs ./scripts/fly-migrate.mjs
 COPY --from=builder --chown=nextjs:nodejs /app/scripts/fly-start.sh    ./scripts/fly-start.sh
 RUN chmod +x ./scripts/fly-start.sh
 
-# Fly mounts its persistent volume here. Ensure it exists so lib/db/index.ts
-# can mkdirSync into it on first boot.
-RUN mkdir -p /data && chown nextjs:nodejs /data
-VOLUME ["/data"]
+# Bake the populated metadata DB into the image. This COPY fails loudly
+# at build time if the local DB hasn't been ingested yet — which is the
+# desired behavior: a `fly deploy` from an unseeded machine should not
+# silently ship a schema-only DB.
+RUN mkdir -p ./data && chown nextjs:nodejs ./data
+COPY --from=builder --chown=nextjs:nodejs /app/data/shufazidian.db ./data/shufazidian.db
 
 USER nextjs
 

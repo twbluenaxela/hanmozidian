@@ -17,8 +17,10 @@ export default function StyleTabs({
   activeStyle,
   onStyleChange,
 }: StyleTabsProps) {
-  // All 5 styles, showing count if available
+  // Historical order: 金文 → 篆 → 隸 → 楷 → 行 → 草. The count badge
+  // surfaces coverage per style, including zi.tools' 金文 data.
   const allStyles = [
+    { slug: "jinwen", nameZh: "金" },
     { slug: "zhuan", nameZh: "篆" },
     { slug: "li", nameZh: "隸" },
     { slug: "kai", nameZh: "楷" },
