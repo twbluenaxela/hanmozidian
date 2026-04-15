@@ -11,10 +11,15 @@ coverage
 .idea
 *.log
 .env*
-# Local SQLite — container mounts a fresh one from /data.
-data/*.db
+# Bake the populated SQLite metadata DB into the image. Image binaries
+# live on R2; this file only holds row metadata (~tens of MB).
+# WAL/SHM/journal sidecars are still excluded — a half-flushed write
+# must never be baked in.data/*.db
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
 data/scraped
+data/zhuojg
+data/seed_texts
+data/*.log
 README.md

@@ -8,8 +8,11 @@ const sqlite = new Database(dbPath);
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
-// Seed script styles
+// Seed script styles. 金文 (bronze-inscription script) is the oldest
+// form on the list - zi.tools is the first source to populate it, so
+// we carve it out as its own slug rather than folding it into 篆書.
 const styles = [
+  { name_zh: "金文", name_en: "Bronze Script", slug: "jinwen", sort_order: 0 },
   { name_zh: "篆書", name_en: "Seal Script", slug: "zhuan", sort_order: 1 },
   { name_zh: "隸書", name_en: "Clerical Script", slug: "li", sort_order: 2 },
   { name_zh: "楷書", name_en: "Regular Script", slug: "kai", sort_order: 3 },
