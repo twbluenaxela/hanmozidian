@@ -1,0 +1,12 @@
+import Database from 'better-sqlite3';
+const db = new Database('./data/shufazidian.db');
+db.pragma('foreign_keys = OFF');
+const r = db.prepare("DELETE FROM calligraphy_images WHERE source='test'").run();
+console.log('deleted:', r.changes);
+db.prepare('DELETE FROM characters').run();
+db.prepare('DELETE FROM calligraphers').run();
+db.prepare('DELETE FROM works').run();
+db.pragma('foreign_keys = ON');
+console.log('final:', db.prepare('SELECT COUNT(*) as c FROM calligraphy_images').get());
+db.pragma('wal_checkpoint(TRUNCATE)');
+db.close();

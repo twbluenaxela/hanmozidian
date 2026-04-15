@@ -8,7 +8,7 @@
  * skipped on subsequent boots.
  *
  * Usage:
- *   DATABASE_PATH=/data/shufazidian.db node scripts/fly-migrate.mjs
+ *   DATABASE_PATH=/app/data/shufazidian.db node scripts/fly-migrate.mjs
  */
 import Database from "better-sqlite3";
 import fs from "node:fs";
