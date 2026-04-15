@@ -23,6 +23,18 @@ const PAPERS = [
 
 const BORDER_COLORS = ["#d4af37", "#8b0000", "#000000", "#333333", "#e5e7eb"];
 
+type CompositionItem = {
+  imgIdx: number;
+  grid: "none" | "jiu" | "mi";
+  invert: boolean;
+  wireframe: boolean;
+  removeBg: boolean;
+  showBorder: boolean;
+  borderShape: "square" | "circle";
+  borderWidth: number;
+  borderColor: string;
+};
+
 export default function JiziPage() {
   const [text, setText] = useState("");
   const [selectedStyle, setSelectedStyle] = useState("kai");
@@ -39,18 +51,21 @@ export default function JiziPage() {
   const [selectedCalligraphers, setSelectedCalligraphers] = useState<number[]>([]);
   const [selectedWorks, setSelectedWorks] = useState<number[]>([]);
   
-  const [composition, setComposition] = useState<Record<number, {
-    imgIdx: number;
-    grid: "none" | "jiu" | "mi";
-    invert: boolean;
-    wireframe: boolean;
-    removeBg: boolean;
-    // New Border State
-    showBorder: boolean;
-    borderShape: "square" | "circle";
-    borderWidth: number;
-    borderColor: string;
-  }>>({});
+ // Updated state with the new type
+  const [composition, setComposition] = useState<Record<number, CompositionItem>>({});
+
+  // Define the DEFAULT object to reuse and avoid "undefined" errors
+  const DEFAULT_SETTINGS: CompositionItem = {
+    imgIdx: 0,
+    grid: 'none',
+    invert: false,
+    wireframe: false,
+    removeBg: false,
+    showBorder: true,
+    borderShape: 'square',
+    borderWidth: 2,
+    borderColor: '#d4af37'
+  };
 
   const isComposing = useRef(false);
 
@@ -94,12 +109,14 @@ export default function JiziPage() {
     lastClickedIndex.current = idx;
   };
 
-  const updateActiveCharsSetting = (key: string, val: any) => {
+ // FIX: Explicitly type the 'key' as keyof CompositionItem
+  const updateActiveCharsSetting = (key: keyof CompositionItem, val: any) => {
     setComposition(prev => {
       const next = { ...prev };
       activeIndices.forEach(idx => {
+        const current = next[idx] || { ...DEFAULT_SETTINGS };
         next[idx] = { 
-          ...(next[idx] || { imgIdx: 0, grid: 'none', invert: false, wireframe: false, removeBg: false, showBorder: true, borderShape: 'square', borderWidth: 2, borderColor: '#d4af37' }), 
+          ...current, 
           [key]: val 
         };
       });
@@ -107,10 +124,15 @@ export default function JiziPage() {
     });
   };
 
-  const getSetting = (key: any) => {
-    if (activeIndices.length === 0) return null;
-    return composition[activeIndices[0]]?.[key];
+  // This syntax tells TS to look at the specific key provided and return that specific type
+  const getSetting = <K extends keyof CompositionItem>(key: K): CompositionItem[K] => {
+    if (activeIndices.length === 0) return DEFAULT_SETTINGS[key];
+    const item = composition[activeIndices[0]];
+    
+    // If the item exists, return its value; otherwise return the default
+    return item ? item[key] : DEFAULT_SETTINGS[key];
   };
+
 
   // FETCH LOGIC
   const handleCompose = useCallback(async () => {
