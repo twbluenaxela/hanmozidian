@@ -4,16 +4,20 @@ import * as schema from "./schema";
 import fs from "fs";
 import path from "path";
 
-// On Fly.io, the populated SQLite metadata DB is baked into the image at
-// /app/data/shufazidian.db (see Dockerfile + scripts/fly-start.sh).
-const dbPath =
-  process.env.DATABASE_PATH || path.join(process.cwd(), "data", "shufazidian.db");
+// 1. Force the path to be absolute within the Docker container
+// In Docker, your WORKDIR is /app. The DB is at /app/data/shufazidian.db
+const dbPath = process.env.DATABASE_PATH || "/app/data/shufazidian.db";
 
-// Ensure the parent directory exists (important on first boot of a fresh Fly volume).
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+// 2. Logging for Fly.io Logs (Crucial for debugging)
+console.log("---------------------------------------");
+console.log("🔍 DATABASE DIAGNOSTICS");
+console.log("📍 Target Path:", dbPath);
+console.log("📂 File Exists?", fs.existsSync(dbPath));
+if (fs.existsSync(dbPath)) {
+  const stats = fs.statSync(dbPath);
+  console.log("⚖️ File Size:", (stats.size / 1024 / 1024).toFixed(2), "MB");
 }
+console.log("---------------------------------------");
 
 const sqlite = new Database(dbPath);
 
