@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
       styleSlug: style,
       calligrapherIds,
       workIds,
-      limit: 50, 
+      limit: 100, // INCREASED FROM 20 TO 100
       random: false, // Turn off random so results are consistent while filtering
     });
 

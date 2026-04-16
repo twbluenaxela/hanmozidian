@@ -109,21 +109,26 @@ export default function CalligraphyCharacter({
   </svg>
 )}
 
-      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="w-[85%] h-[85%] flex items-center justify-center"> {/* Constrain size to 85% to act as padding */}
-          <img
-            src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1`}
-            alt={char}
-            className="max-w-full max-h-full object-contain transition-all duration-300"
-            crossOrigin="anonymous" 
-            style={{ 
-              filter: filterUrl ? filterUrl : baseCssFilter,
-              // Optional: slight nudge if your specific scans are always bottom-heavy
-              // transform: 'translateY(-2%)' 
-            }}
-          />
-        </div>
-      </div>
+      {/* 2. Character Logic inside CalligraphyCharacter.tsx */}
+<div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+  <div className="w-[85%] h-[85%] flex items-center justify-center">
+    
+    {/* 🔥 STRICT CHECK: Only render img if imageUrl is a real string */}
+    {typeof imageUrl === 'string' && imageUrl.length > 5 ? (
+      <img
+        src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1`}
+        alt={char}
+        className="max-w-full max-h-full object-contain transition-all duration-300"
+        crossOrigin="anonymous" 
+        style={{ filter: filterUrl ? filterUrl : baseCssFilter }}
+      />
+    ) : (
+      /* Fallback if URL is corrupted */
+      <span className="text-4xl opacity-20">{char}</span>
+    )}
+
+  </div>
+</div>
     </div>
   );
 }
