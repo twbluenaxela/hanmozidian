@@ -92,14 +92,14 @@ export default function CalligraphyCharacter({
       )}
 
       <div className="absolute inset-0 p-4 z-10 flex items-center justify-center pointer-events-none">
-<img
-  // We add ?cors=1 to the URL to bypass the old, broken browser cache
-  src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1`}
-  alt={char}
-  className="w-full h-full object-contain transition-all duration-300"
-  crossOrigin="anonymous" 
-  style={{ filter: filterUrl ? filterUrl : baseCssFilter }}
-/>
+        <img
+        // We add ?cors=1 to the URL to bypass the old, broken browser cache
+        src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1`}
+        alt={char}
+        className="w-full h-full object-contain transition-all duration-300"
+        crossOrigin="anonymous" 
+        style={{ filter: filterUrl ? filterUrl : baseCssFilter }}
+        />
       </div>
     </div>
   );
