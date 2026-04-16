@@ -5,7 +5,6 @@ import { resolveImageUrl } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
-
 // Parse a comma-separated list of integer ids. Accepts null (empty param),
 // empty string, and single values. Returns undefined when there's nothing
 // to filter on so downstream query code treats it as "no filter".
