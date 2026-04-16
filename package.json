@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy": "node -e \"const db = require('better-sqlite3')('data/shufazidian.db'); db.pragma('wal_checkpoint(TRUNCATE)'); db.close();\" && fly deploy"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1029.0",
