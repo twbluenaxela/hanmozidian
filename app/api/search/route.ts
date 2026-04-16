@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { characters, calligraphyImages, scriptStyles } from "@/lib/db/schema";
 import { eq, sql, count } from "drizzle-orm";
 
+export const dynamic = 'force-dynamic'; // <--- ADD THIS
+
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q");
   if (!q) {
