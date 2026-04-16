@@ -231,10 +231,16 @@ export default function JiziPage() {
               // Issue 5: Strict String Coercion to prevent ID mismatch
               let currentImg = null;
               if (res.images && res.images.length > 0) {
+                // Try to find the specific selected ID for THIS character
                 if (s.selectedImageId) {
                   currentImg = res.images.find((i: any) => String(i.id) === String(s.selectedImageId));
                 }
-                if (!currentImg) currentImg = res.images[0];
+                
+                // FALLBACK: If the selectedImageId doesn't exist for this character,
+                // use the character's first available image instead of breaking.
+                if (!currentImg) {
+                  currentImg = res.images[0];
+                }
               }
 
               const isSelected = activeIndices.includes(idx);
@@ -315,14 +321,31 @@ export default function JiziPage() {
                  {results[activeIndices[0]].images.map((img: any) => (
                    <button
                      key={img.id}
-                     onClick={() => updateActiveCharsSetting('selectedImageId', img.id)}
+                     onClick={() => {
+                      // 1. Identify the specific character slot the gallery is showing (usually the first selected one)
+                      const targetIdx = activeIndices[0]; 
+                      
+                      // 2. Update ONLY that specific index in the composition state
+                      setComposition(prev => ({
+                        ...prev,
+                        [targetIdx]: {
+                          ...(prev[targetIdx] || DEFAULT_SETTINGS),
+                          selectedImageId: img.id // Set the unique ID for just this one character
+                        }
+                      }));
+                    }}
                      className={`aspect-square bg-white rounded-lg border-2 overflow-hidden ${
                        String(composition[activeIndices[0]]?.selectedImageId) === String(img.id) 
                          ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]/30' 
                          : 'border-transparent'
                      }`}
                    >
-                     <img src={`${img.imageUrl}?thumb=1`} className="w-full h-full object-contain grayscale" />
+                      <img 
+                      // Add ?gallery=1 to the URL to ensure the gallery cache is separate from the canvas cache
+                      src={`${img.imageUrl}${img.imageUrl.includes('?') ? '&' : '?'}gallery=1`} 
+                      className="w-full h-full object-contain grayscale" 
+                      alt="alt"
+                      />
                    </button>
                  ))}
                </div>
