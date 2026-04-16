@@ -1,14 +1,16 @@
 #!/bin/sh
 set -e
 
-echo "--- 🔍 RUNTIME DEBUGGING ---"
-echo "Current Directory: $(pwd)"
-echo "Listing /app/data contents:"
-ls -lh /app/data || echo "Directory /app/data not found"
-echo "--- 🔍 END DEBUGGING ---"
+echo "--- 🔍 RUNTIME DB CHECK ---"
+if [ -f "./data/shufazidian.db" ]; then
+    du -h ./data/shufazidian.db
+else
+    echo "❌ ERROR: /app/data/shufazidian.db NOT FOUND"
+fi
+echo "--- 🔍 END CHECK ---"
 
-echo "Running migrations/repair..."
+# Run migrations (This will "Skip" if the DB already has the migration table)
 node scripts/fly-migrate.mjs
 
-echo "🚀 Starting Next.js Standalone..."
-PORT=${PORT:-8080} HOSTNAME=0.0.0.0 node server.js
+echo "🚀 Starting Next.js..."
+node server.js
