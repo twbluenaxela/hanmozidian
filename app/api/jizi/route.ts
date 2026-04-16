@@ -1,57 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCharacterByChar, getImages } from "@/lib/db/queries";
+import { getCharacterByChar, getImages, getJiziCoverage } from "@/lib/db/queries";
 import { resolveImageUrl } from "@/lib/utils";
 
-// Parse a comma-separated list of integer ids
 function parseIdList(raw: string | null): number[] | undefined {
   if (!raw) return undefined;
-  const ids = raw
-    .split(",")
-    .map((s) => parseInt(s, 10))
-    .filter((n) => Number.isFinite(n));
+  const ids = raw.split(",").map((s) => parseInt(s, 10)).filter((n) => Number.isFinite(n));
   return ids.length > 0 ? ids : undefined;
 }
 
 export const dynamic = 'force-dynamic';
 
-
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const text = searchParams.get("text") || "";
   const style = searchParams.get("style") || undefined;
-  
   const calligrapherIds = parseIdList(searchParams.get("calligrapher"));
   const workIds = parseIdList(searchParams.get("work"));
 
   if (!text) {
-    return NextResponse.json({ characters: [] });
+    return NextResponse.json({ characters: [], calligraphers: [], works: [] });
   }
 
   const chars = [...text];
   const results = [];
+  const knownIds: number[] = [];
 
   for (const char of chars) {
     const charRow = getCharacterByChar(char);
     if (!charRow) {
-      results.push({
-        character: char,
-        images: [],
-        found: false,
-      });
+      results.push({ character: char, images: [], found: false });
       continue;
     }
 
+    knownIds.push(charRow.id);
+
+    // INCREASE LIMIT: Fetch 50 images so the user has real "selections"
     const images = getImages({
       characterId: charRow.id,
       styleSlug: style,
       calligrapherIds,
       workIds,
-      page: 1,
-      limit: 10,
-      random: true,
+      limit: 50, 
+      random: false, // Turn off random so results are consistent while filtering
     });
 
     results.push({
+      id: charRow.id, // Needed for facets
       character: char,
       found: true,
       images: images.map((img) => ({
@@ -61,5 +55,15 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  return NextResponse.json({ characters: results });
+  // RE-ADD FACETS: This allows JiziPicker to show which calligraphers are available
+  const { calligraphers, works } = getJiziCoverage({
+    characterIds: knownIds,
+    styleSlug: style,
+  });
+
+  return NextResponse.json({ 
+    characters: results,
+    calligraphers,
+    works 
+  });
 }

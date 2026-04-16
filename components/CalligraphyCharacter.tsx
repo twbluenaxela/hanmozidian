@@ -80,16 +80,34 @@ export default function CalligraphyCharacter({
         </defs>
       </svg>
 
-      {grid !== "none" && (
-        <svg className="absolute inset-0 w-full h-full pointer-events-none z-0 opacity-30" viewBox="0 0 100 100">
-          <rect width="100" height="100" fill="none" stroke="var(--accent)" strokeWidth="0.5" />
-          {grid === "jiu" ? (
-            <><line x1="33.3" y1="0" x2="33.3" y2="100" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /><line x1="66.6" y1="0" x2="66.6" y2="100" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /><line x1="0" y1="33.3" x2="100" y2="33.3" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /><line x1="0" y1="66.6" x2="100" y2="66.6" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /></>
-          ) : (
-            <><line x1="50" y1="0" x2="50" y2="100" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /><line x1="0" y1="50" x2="100" y2="50" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /><line x1="0" y1="0" x2="100" y2="100" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /><line x1="100" y1="0" x2="0" y2="100" stroke="var(--accent)" strokeWidth="0.2" strokeDasharray="1,1" /></>
-          )}
-        </svg>
-      )}
+{grid !== "none" && (
+  <svg 
+    className="absolute inset-0 w-full h-full pointer-events-none z-0" 
+    viewBox="0 0 100 100"
+    style={{ opacity: 0.6 }} // Increased from 0.3
+  >
+    {/* Main Border */}
+    <rect width="100" height="100" fill="none" stroke="#8b0000" strokeWidth="0.8" />
+    
+    {grid === "jiu" ? (
+      <>
+        {/* 九宮格 */}
+        <line x1="33.3" y1="0" x2="33.3" y2="100" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+        <line x1="66.6" y1="0" x2="66.6" y2="100" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+        <line x1="0" y1="33.3" x2="100" y2="33.3" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+        <line x1="0" y1="66.6" x2="100" y2="66.6" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+      </>
+    ) : (
+      <>
+        {/* 米字格 */}
+        <line x1="50" y1="0" x2="50" y2="100" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+        <line x1="0" y1="50" x2="100" y2="50" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+        <line x1="0" y1="0" x2="100" y2="100" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+        <line x1="100" y1="0" x2="0" y2="100" stroke="#8b0000" strokeWidth="0.4" strokeDasharray="2,2" />
+      </>
+    )}
+  </svg>
+)}
 
       <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
         <div className="w-[85%] h-[85%] flex items-center justify-center"> {/* Constrain size to 85% to act as padding */}

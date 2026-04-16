@@ -198,50 +198,71 @@ export default function JiziPage() {
               </button>
             </div>
 
-            {/* CANVAS WRAPPER */}
-            <div className="flex justify-center items-start overflow-x-auto py-8">
-              <div 
-                ref={canvasRef}
-                style={{ 
-                  backgroundColor: paper.color,
-                  display: orientation === 'vertical' ? 'inline-flex' : 'flex',
-                  flexDirection: orientation === 'vertical' ? 'column' : 'row',
-                  flexWrap: 'wrap',
-                  writingMode: orientation === 'vertical' ? 'vertical-rl' : 'horizontal-tb',
-                  gap: `${gap}px`,
-                  maxHeight: orientation === 'vertical' ? '1200px' : 'none',
-                  minHeight: '400px',
-                  padding: '48px',
-                }}
-                className={`rounded-3xl transition-all duration-500 relative ${loading ? 'opacity-60' : ''}`}
-              >
-                {results.map((res, idx) => {
-                  const s = composition[idx] || DEFAULT_SETTINGS;
-                  const currentImg = res.images?.[s.imgIdx] || res.images?.[0];
-                  const isSelected = activeIndices.includes(idx);
-                  
-                  return (
-                    <div 
-                      key={idx} 
-                      onClick={(e) => handleCharClick(idx, e)} 
-                      style={{ writingMode: 'horizontal-tb' }}
-                      className={`relative cursor-pointer transition-all duration-300 ${isSelected ? 'ring-4 ring-[var(--accent)] ring-offset-4 ring-offset-[var(--background)] rounded-xl z-10' : 'opacity-90'}`}
-                    >
-                      {res.found && currentImg ? (
-                        <CalligraphyCharacter imageUrl={currentImg.imageUrl} char={res.character} {...s} size={gridSize} />
-                      ) : (
-                        <div 
-                          style={{ width: gridSize, height: gridSize }} 
-                          className="border-2 border-dashed border-[var(--border)] rounded-xl flex items-center justify-center text-[var(--muted-dim)] text-6xl font-display"
-                        >
-                          {res.character}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+{/* THE CANVAS ENGINE - Updated to CSS Grid */}
+<div className="flex justify-center items-start overflow-x-auto py-8">
+  <div 
+    ref={canvasRef}
+    style={{ 
+      backgroundColor: paper.color,
+      display: "grid",
+      // Use dynamic columns based on orientation
+      gridTemplateColumns: orientation === 'horizontal' 
+        ? `repeat(auto-fit, ${gridSize}px)` 
+        : 'none',
+      gridAutoFlow: orientation === 'vertical' ? 'column' : 'row',
+      gridTemplateRows: orientation === 'vertical' 
+        ? `repeat(auto-fill, ${gridSize}px)` 
+        : 'none',
+      gap: `${gap}px`,
+      // Adjust width/height to fit content nicely
+      width: orientation === 'horizontal' ? '100%' : 'auto',
+      maxWidth: orientation === 'horizontal' ? '100%' : 'none',
+      height: orientation === 'vertical' ? '1000px' : 'auto', // Adjust height for vertical scroll
+      padding: '64px',
+      justifyContent: "center", // This centers the whole grid group
+      alignContent: "start",
+      writingMode: orientation === 'vertical' ? 'vertical-rl' : 'horizontal-tb',
+    }}
+    className={`rounded-3xl transition-all duration-500 relative shadow-inner ${loading ? 'opacity-60' : ''}`}
+  >
+    {results.map((res, idx) => {
+      const s = composition[idx] || DEFAULT_SETTINGS;
+      const currentImg = res.images?.[s.imgIdx] || res.images?.[0];
+      const isSelected = activeIndices.includes(idx);
+      
+      return (
+        <div 
+          key={idx} 
+          onClick={(e) => handleCharClick(idx, e)} 
+          style={{ 
+            writingMode: 'horizontal-tb',
+            width: gridSize,
+            height: gridSize
+          }}
+          className={`relative cursor-pointer transition-all duration-300 flex items-center justify-center ${
+            isSelected ? 'z-10' : 'opacity-90'
+          }`}
+        >
+          {/* Selection Ring - Positioned absolutely so it doesn't push the box */}
+          {isSelected && (
+            <div className="absolute inset-[-8px] border-2 border-[var(--accent)] rounded-2xl animate-pulse pointer-events-none" />
+          )}
+
+          {res.found && currentImg ? (
+            <CalligraphyCharacter imageUrl={currentImg.imageUrl} char={res.character} {...s} size={gridSize} />
+          ) : (
+            <div 
+              style={{ width: gridSize, height: gridSize }} 
+              className="border-2 border-dashed border-[var(--border)] rounded-xl flex items-center justify-center text-[var(--muted-dim)] text-6xl font-display"
+            >
+              {res.character}
             </div>
+          )}
+        </div>
+      );
+    })}
+  </div>
+</div>
           </div>
         </div>
       </main>
@@ -317,6 +338,29 @@ export default function JiziPage() {
              </div>
            )}
 
+           {/* ALTERNATIVES GALLERY */}
+{activeIndices.length === 1 && results[activeIndices[0]]?.images?.length > 1 && (
+  <div className="p-4 bg-[var(--card-bg)] rounded-2xl border border-[var(--border)] mb-6">
+    <p className="text-[10px] uppercase font-bold text-[var(--accent)] mb-3">
+      版本替換 ({results[activeIndices[0]].character})
+    </p>
+    <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1 custom-scrollbar">
+      {results[activeIndices[0]].images.map((img: any, i: number) => (
+        <button
+          key={i}
+          onClick={() => updateActiveCharsSetting('imgIdx', i)}
+          className={`aspect-square bg-white rounded-lg border-2 transition-all overflow-hidden ${
+            (composition[activeIndices[0]]?.imgIdx || 0) === i 
+              ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]/20' 
+              : 'border-transparent hover:border-[var(--muted)]'
+          }`}
+        >
+          <img src={`${img.imageUrl}?cors=1`} className="w-full h-full object-contain grayscale" />
+        </button>
+      ))}
+    </div>
+  </div>
+)}
            <JiziPicker
              text={text} style={selectedStyle} open={pickerOpen}
              selectedCalligraphers={selectedCalligraphers} selectedWorks={selectedWorks}
