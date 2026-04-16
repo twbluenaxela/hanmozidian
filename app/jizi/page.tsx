@@ -200,19 +200,28 @@ export default function JiziPage() {
             ref={canvasRef}
             style={{ 
               backgroundColor: paper.color,
-              display: 'flex',
+              // 1. Change to inline-flex so the paper wraps perfectly around the content
+              display: 'inline-flex', 
               flexWrap: 'wrap',
-              flexDirection: orientation === 'vertical' ? 'column' : 'row',
+              // 2. IMPORTANT: In vertical-rl, 'row' is what flows top-to-bottom
+              flexDirection: 'row', 
               writingMode: orientation === 'vertical' ? 'vertical-rl' : 'horizontal-tb',
-              alignContent: orientation === 'vertical' ? 'flex-start' : 'center',
-              justifyContent: 'center',
+              // 3. alignContent 'start' keeps columns tight as they wrap to the left
+              alignContent: 'flex-start',
+              justifyContent: orientation === 'vertical' ? 'start' : 'center',
               gap: `${gap}px`,
-              // Issue 3: Constrain vertical height so it wraps right-to-left
-              maxHeight: orientation === 'vertical' ? '65vh' : 'none',
-              padding: '32px',
-              // Issue 4: Ensure it grows to fit all content for exporting
-              width: 'max-content',
-              minWidth: '100%',
+              
+              // 4. Set a fixed height for vertical mode so it wraps into multiple columns.
+              // If this is 'none' or 'auto', it will just be one infinite long column.
+              height: orientation === 'vertical' ? '800px' : 'auto', 
+              
+              padding: '60px', // Breathing room for export
+              
+              // 5. Ensure the paper grows horizontally in vertical mode
+              width: orientation === 'horizontal' ? '100%' : 'auto',
+              maxWidth: orientation === 'horizontal' ? '800px' : 'none',
+              minWidth: 'fit-content',
+              minHeight: 'fit-content'
             }}
             className={`rounded-2xl transition-opacity duration-500 ${loading ? 'opacity-50' : 'opacity-100'}`}
           >
