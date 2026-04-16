@@ -33,6 +33,10 @@ type CompositionItem = {
   borderShape: "square" | "circle";
   borderWidth: number;
   borderColor: string;
+  scale: number;    // 0.5 to 1.5
+  offsetX: number;  // -50 to 50
+  offsetY: number;  // -50 to 50
+  rotation: number; // -15 to 15 degrees
 };
 
 export default function JiziPage() {
@@ -65,7 +69,11 @@ export default function JiziPage() {
     showBorder: true,
     borderShape: 'square',
     borderWidth: 2,
-    borderColor: '#d4af37'
+    borderColor: '#d4af37',
+    scale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    rotation: 0,
   };
 
   const isComposing = useRef(false);
@@ -249,7 +257,7 @@ export default function JiziPage() {
                 <div 
                   key={`${idx}-${currentImg?.id || 'empty'}`} 
                   onClick={(e) => handleCharClick(idx, e)} 
-                  style={{ writingMode: 'horizontal-tb', width: gridSize, height: gridSize }}
+                  style={{ writingMode: 'horizontal-tb', width: gridSize, height: gridSize, transform: `translate(${s.offsetX}px, ${s.offsetY}px) scale(${s.scale}) rotate(${s.rotation}deg)`, }}
                   className={`relative cursor-pointer transition-all duration-200 flex items-center justify-center shrink-0 ${isSelected ? 'z-10' : 'opacity-95'}`}
                 >
                   {isSelected && (

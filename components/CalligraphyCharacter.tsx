@@ -77,6 +77,16 @@ export default function CalligraphyCharacter({
             <feConvolveMatrix in="cleanImage" order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" preserveAlpha="true" result="edges" />
             <feColorMatrix in="edges" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1 1 1 0 0" /><feComponentTransfer><feFuncA type="linear" slope="2.5" intercept="-0.1" /><feFuncR type="linear" slope="0" intercept="1" /><feFuncG type="linear" slope="0" intercept="1" /><feFuncB type="linear" slope="0" intercept="1" /></feComponentTransfer>
           </filter>
+          <filter id={`bleed-${filterId}`} colorInterpolationFilters="sRGB">
+            <feFlood floodColor="white" result="whiteBG" />
+            <feComposite in="SourceGraphic" in2="whiteBG" operator="over" result="cleanImage" />
+            {/* The core: slightly thicken the ink (dilate) */}
+            <feMorphology operator="dilate" radius="0.5" in="cleanImage" result="thickened" />
+            {/* The soft edge: subtle blur */}
+            <feGaussianBlur stdDeviation="0.4" in="thickened" result="softened" />
+            {/* Re-apply the color matrix to turn it back to black ink */}
+          <feColorMatrix in="softened" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1 -1 -1 1 1" />
+        </filter>
         </defs>
       </svg>
 
