@@ -43,18 +43,20 @@ export default function JiziPage() {
   const [pickerOpen, setPickerOpen] = useState(true);
   const [paper, setPaper] = useState(PAPERS[0]);
   const [isExporting, setIsExporting] = useState(false);
-  const canvasRef = useRef<HTMLDivElement>(null);
+  
+  // Layout State
+  const [orientation, setOrientation] = useState<"horizontal" | "vertical">("horizontal");
+  const [gridSize, setGridSize] = useState(160);
+  const [gap, setGap] = useState(24);
 
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [activeIndices, setActiveIndices] = useState<number[]>([]);
   const lastClickedIndex = useRef<number | null>(null);
 
   const [selectedCalligraphers, setSelectedCalligraphers] = useState<number[]>([]);
   const [selectedWorks, setSelectedWorks] = useState<number[]>([]);
-  
- // Updated state with the new type
   const [composition, setComposition] = useState<Record<number, CompositionItem>>({});
 
-  // Define the DEFAULT object to reuse and avoid "undefined" errors
   const DEFAULT_SETTINGS: CompositionItem = {
     imgIdx: 0,
     grid: 'none',
@@ -69,6 +71,14 @@ export default function JiziPage() {
 
   const isComposing = useRef(false);
 
+  // SANITIZATION HANDLER
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const rawValue = e.target.value;
+    // Strip zero-width spaces and other invisible "ghost" characters
+    const sanitized = rawValue.replace(/[\u200B-\u200D\uFEFF]/g, "");
+    setText(sanitized);
+  };
+
   // EXPORT ENGINE
   const handleExport = async () => {
     if (!canvasRef.current) return;
@@ -77,7 +87,7 @@ export default function JiziPage() {
     setActiveIndices([]); // Clear selection glow for export
 
     try {
-      await new Promise(r => setTimeout(r, 200)); // Let UI settle
+      await new Promise(r => setTimeout(r, 200)); 
       const dataUrl = await toPng(canvasRef.current, {
         pixelRatio: 3,
         backgroundColor: paper.color === 'transparent' ? undefined : paper.color,
@@ -95,6 +105,7 @@ export default function JiziPage() {
     }
   };
 
+  // CLICK HANDLER
   const handleCharClick = (idx: number, e: React.MouseEvent) => {
     e.preventDefault();
     if (e.shiftKey && lastClickedIndex.current !== null) {
@@ -109,30 +120,23 @@ export default function JiziPage() {
     lastClickedIndex.current = idx;
   };
 
- // FIX: Explicitly type the 'key' as keyof CompositionItem
+  // BATCH SETTINGS UPDATER
   const updateActiveCharsSetting = (key: keyof CompositionItem, val: any) => {
     setComposition(prev => {
       const next = { ...prev };
       activeIndices.forEach(idx => {
         const current = next[idx] || { ...DEFAULT_SETTINGS };
-        next[idx] = { 
-          ...current, 
-          [key]: val 
-        };
+        next[idx] = { ...current, [key]: val };
       });
       return next;
     });
   };
 
-  // This syntax tells TS to look at the specific key provided and return that specific type
   const getSetting = <K extends keyof CompositionItem>(key: K): CompositionItem[K] => {
     if (activeIndices.length === 0) return DEFAULT_SETTINGS[key];
     const item = composition[activeIndices[0]];
-    
-    // If the item exists, return its value; otherwise return the default
     return item ? item[key] : DEFAULT_SETTINGS[key];
   };
-
 
   // FETCH LOGIC
   const handleCompose = useCallback(async () => {
@@ -161,7 +165,7 @@ export default function JiziPage() {
           <div className="max-w-4xl mx-auto space-y-6">
             <div className="flex justify-between items-end">
               <div>
-                <h1 className="font-display text-4xl mb-2">集字工坊</h1>
+                <h1 className="font-display text-4xl mb-2 text-[var(--accent)]">集字工坊</h1>
                 <p className="text-[var(--muted)] text-sm">輸入內容，點擊字格進行細部調整</p>
               </div>
               <button 
@@ -175,7 +179,7 @@ export default function JiziPage() {
 
             <textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={handleTextChange}
               className="w-full bg-[var(--card-bg)] border border-[var(--border)] rounded-2xl p-6 text-4xl font-display focus:border-[var(--accent)] shadow-xl transition-all resize-none h-32"
               placeholder="輸入漢字..."
             />
@@ -194,26 +198,49 @@ export default function JiziPage() {
               </button>
             </div>
 
-            <div 
-              ref={canvasRef}
-              style={{ backgroundColor: paper.color }}
-              className={`rounded-3xl min-h-[400px] flex flex-wrap gap-6 justify-center items-center p-12 transition-all duration-500 relative ${loading ? 'opacity-60' : ''}`}
-            >
-              {results.map((res, idx) => {
-                const s = composition[idx] || { imgIdx: 0, grid: 'none', invert: false, wireframe: false, removeBg: false, showBorder: true, borderShape: 'square', borderWidth: 2, borderColor: '#d4af37' };
-                const currentImg = res.images?.[s.imgIdx] || res.images?.[0];
-                const isSelected = activeIndices.includes(idx);
-                
-                return (
-                  <div key={idx} onClick={(e) => handleCharClick(idx, e)} className={`relative cursor-pointer transition-all duration-300 ${isSelected ? 'scale-110 z-10' : 'opacity-90'}`}>
-                    {res.found && currentImg ? (
-                      <CalligraphyCharacter imageUrl={currentImg.imageUrl} char={res.character} {...s} size={180} />
-                    ) : (
-                      <div className="w-[180px] h-[180px] border-2 border-dashed border-[var(--border)] rounded-xl flex items-center justify-center text-[var(--muted-dim)] text-6xl font-display">{res.character}</div>
-                    )}
-                  </div>
-                );
-              })}
+            {/* CANVAS WRAPPER */}
+            <div className="flex justify-center items-start overflow-x-auto py-8">
+              <div 
+                ref={canvasRef}
+                style={{ 
+                  backgroundColor: paper.color,
+                  display: orientation === 'vertical' ? 'inline-flex' : 'flex',
+                  flexDirection: orientation === 'vertical' ? 'column' : 'row',
+                  flexWrap: 'wrap',
+                  writingMode: orientation === 'vertical' ? 'vertical-rl' : 'horizontal-tb',
+                  gap: `${gap}px`,
+                  maxHeight: orientation === 'vertical' ? '1200px' : 'none',
+                  minHeight: '400px',
+                  padding: '48px',
+                }}
+                className={`rounded-3xl transition-all duration-500 relative ${loading ? 'opacity-60' : ''}`}
+              >
+                {results.map((res, idx) => {
+                  const s = composition[idx] || DEFAULT_SETTINGS;
+                  const currentImg = res.images?.[s.imgIdx] || res.images?.[0];
+                  const isSelected = activeIndices.includes(idx);
+                  
+                  return (
+                    <div 
+                      key={idx} 
+                      onClick={(e) => handleCharClick(idx, e)} 
+                      style={{ writingMode: 'horizontal-tb' }}
+                      className={`relative cursor-pointer transition-all duration-300 ${isSelected ? 'ring-4 ring-[var(--accent)] ring-offset-4 ring-offset-[var(--background)] rounded-xl z-10' : 'opacity-90'}`}
+                    >
+                      {res.found && currentImg ? (
+                        <CalligraphyCharacter imageUrl={currentImg.imageUrl} char={res.character} {...s} size={gridSize} />
+                      ) : (
+                        <div 
+                          style={{ width: gridSize, height: gridSize }} 
+                          className="border-2 border-dashed border-[var(--border)] rounded-xl flex items-center justify-center text-[var(--muted-dim)] text-6xl font-display"
+                        >
+                          {res.character}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
@@ -226,6 +253,25 @@ export default function JiziPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar space-y-8 p-6">
+           {/* LAYOUT & GRID SIZE CONTROLS */}
+           <div className="p-4 bg-[var(--card-bg)] rounded-2xl space-y-4">
+              <p className="text-[10px] uppercase font-bold text-[var(--accent)]">版面與網格</p>
+              <div className="flex gap-2">
+                <button onClick={() => setOrientation('horizontal')} className={`flex-1 py-2 rounded-lg border text-xs transition-all ${orientation === 'horizontal' ? 'bg-[var(--accent)] text-[var(--background)]' : 'border-[var(--border)]'}`}>橫排 (LTR)</button>
+                <button onClick={() => setOrientation('vertical')} className={`flex-1 py-2 rounded-lg border text-xs transition-all ${orientation === 'vertical' ? 'bg-[var(--accent)] text-[var(--background)]' : 'border-[var(--border)]'}`}>直排 (RTL)</button>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-[var(--muted)]">格子: {gridSize}px</span>
+                  <input type="range" min="100" max="300" value={gridSize} onChange={(e) => setGridSize(parseInt(e.target.value))} className="w-2/3 accent-[var(--accent)]" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-[var(--muted)]">間距: {gap}px</span>
+                  <input type="range" min="0" max="100" value={gap} onChange={(e) => setGap(parseInt(e.target.value))} className="w-2/3 accent-[var(--accent)]" />
+                </div>
+              </div>
+           </div>
+
            <div className="grid grid-cols-3 gap-2">
              {STYLES.map(s => (
                <button key={s.slug} onClick={() => setSelectedStyle(s.slug)} className={`py-2 rounded-lg text-sm border transition-all ${selectedStyle === s.slug ? 'bg-[var(--accent)] text-[var(--background)]' : 'border-[var(--border)]'}`}>{s.nameZh}</button>
@@ -280,6 +326,23 @@ export default function JiziPage() {
            />
         </div>
       </aside>
+      {/* RE-OPEN SIDEBAR HANDLE */}
+{!pickerOpen && (
+  <button 
+    onClick={() => setPickerOpen(true)}
+    className="fixed right-0 top-1/2 -translate-y-1/2 bg-[var(--card-bg)] border-l border-t border-b border-[var(--border)] p-2 pl-3 rounded-l-2xl shadow-2xl hover:bg-[var(--accent)] hover:text-[var(--background)] transition-all z-50 group"
+    title="開啟控制台"
+  >
+    <div className="flex flex-col items-center gap-1">
+      <span className="text-xl">«</span>
+      <span 
+        className="text-[10px] [writing-mode:vertical-lr] font-bold tracking-widest"
+      >
+        控制台
+      </span>
+    </div>
+  </button>
+)}
     </div>
   );
 }

@@ -91,15 +91,20 @@ export default function CalligraphyCharacter({
         </svg>
       )}
 
-      <div className="absolute inset-0 p-4 z-10 flex items-center justify-center pointer-events-none">
-        <img
-        // We add ?cors=1 to the URL to bypass the old, broken browser cache
-        src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1`}
-        alt={char}
-        className="w-full h-full object-contain transition-all duration-300"
-        crossOrigin="anonymous" 
-        style={{ filter: filterUrl ? filterUrl : baseCssFilter }}
-        />
+      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="w-[85%] h-[85%] flex items-center justify-center"> {/* Constrain size to 85% to act as padding */}
+          <img
+            src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1`}
+            alt={char}
+            className="max-w-full max-h-full object-contain transition-all duration-300"
+            crossOrigin="anonymous" 
+            style={{ 
+              filter: filterUrl ? filterUrl : baseCssFilter,
+              // Optional: slight nudge if your specific scans are always bottom-heavy
+              // transform: 'translateY(-2%)' 
+            }}
+          />
+        </div>
       </div>
     </div>
   );
