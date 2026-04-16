@@ -4,40 +4,25 @@ import * as schema from "./schema";
 import fs from "fs";
 import path from "path";
 
-/**
- * PATH LOGIC
- * Locally: Use path.join(process.cwd(), 'data', 'shufazidian.db')
- * Fly.io Runtime: Use /app/data/shufazidian.db
- * Docker Build: Use a relative path to avoid "directory not found" errors
- */
-const isFly = !!process.env.FLY_APP_NAME;
-const dbPath = isFly 
-  ? "/app/data/shufazidian.db" 
-  : path.join(process.cwd(), "data", "shufazidian.db");
-
+// process.cwd() is /app in the Docker container and the project root locally.
+// This is more reliable than hardcoding /app/
+const dbPath = path.resolve(process.cwd(), "data", "shufazidian.db");
 const dbDir = path.dirname(dbPath);
 
-// Ensure the directory exists so better-sqlite3 doesn't throw a TypeError
 if (!fs.existsSync(dbDir)) {
-  try {
-    fs.mkdirSync(dbDir, { recursive: true });
-  } catch (err) {
-    // During build time on some systems, this might fail, 
-    // we catch it so it doesn't stop the Next.js build.
-  }
+  fs.mkdirSync(dbDir, { recursive: true });
 }
 
-// Diagnostics for Fly.io logs
-if (isFly) {
-  console.log("---------------------------------------");
-  console.log("🔍 DATABASE DIAGNOSTICS");
-  console.log("📍 Target Path:", dbPath);
-  console.log("📂 File Exists?", fs.existsSync(dbPath));
-  console.log("---------------------------------------");
+// Diagnostics for the Fly.io Logs
+console.log(`[DB] Initialization. Path: ${dbPath}`);
+if (fs.existsSync(dbPath)) {
+  const stats = fs.statSync(dbPath);
+  console.log(`[DB] File found. Size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
+} else {
+  console.log(`[DB] WARNING: Database file NOT found at build/start. A new empty DB will be created.`);
 }
 
 const sqlite = new Database(dbPath);
-
 sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
