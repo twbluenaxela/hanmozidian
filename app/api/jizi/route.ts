@@ -12,6 +12,9 @@ function parseIdList(raw: string | null): number[] | undefined {
   return ids.length > 0 ? ids : undefined;
 }
 
+export const dynamic = 'force-dynamic';
+
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const text = searchParams.get("text") || "";

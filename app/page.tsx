@@ -8,6 +8,9 @@ const POPULAR_CHARACTERS = [
   "山", "水", "風", "月", "花", "春", "秋", "雲",
 ];
 
+export const dynamic = 'force-dynamic';
+
+
 export default function HomePage() {
   const router = useRouter();
 
