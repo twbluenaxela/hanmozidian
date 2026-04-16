@@ -11,13 +11,17 @@ coverage
 .idea
 *.log
 .env*
-# Bake the populated SQLite metadata DB into the image. Image binaries
-# live on R2; this file only holds row metadata (~tens of MB).
-# WAL/SHM/journal sidecars are still excluded — a half-flushed write
-# must never be baked in.data/*.db
+
+# --- THE FIX IS HERE ---
+# Remove or comment out "data/*.db" 
+# data/*.db  <-- REMOVE THIS LINE
+
+# KEEP THESE: We still want to ignore the temporary/journal files
 data/*.db-journal
 data/*.db-wal
 data/*.db-shm
+
+# Keep the rest of your ignores
 data/scraped
 data/zhuojg
 data/seed_texts
