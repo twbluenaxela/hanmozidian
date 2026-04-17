@@ -41,6 +41,7 @@ import time
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
+from urllib.parse import quote
 
 try:
     import requests
@@ -106,6 +107,7 @@ MAX_IMAGE_BYTES = 5 * 1024 * 1024
 STYLE_LABEL_TO_SLUG = {
     "金": "jinwen",
     "金文": "jinwen",
+    "篆": "zhuan",
     "隸": "li",
     "隶": "li",
     "楷": "kai",
@@ -127,6 +129,30 @@ def looks_like_work(text: str) -> bool:
         text.endswith(_WORK_SUFFIX_EXTRAS)
         or (len(text) > 0 and text[-1] in WORK_SUFFIX_CHARS)
     )
+
+# Time period labels that appear in 金文 rows (e.g. 西周早期, 春秋, 戰國).
+# These are not calligrapher names or work titles — rows using them as the
+# sole attribution should be skipped.
+_PERIOD_SUFFIX_CHARS = frozenset("期代末初")
+
+# Bare dynasty / era names used as attribution in 金文 rows
+_PERIOD_BARE_NAMES = frozenset([
+    "西周", "東周", "春秋", "戰國", "商", "周",
+])
+
+def looks_like_period(text: str) -> bool:
+    if not text:
+        return False
+    # Ends in explicit period qualifier (早期, 中期, 晚期, 時代, …)
+    if text[-1] in _PERIOD_SUFFIX_CHARS:
+        return True
+    # Exact bare dynasty / era name
+    if text in _PERIOD_BARE_NAMES:
+        return True
+    # Compound range like '西周晚期或春秋早期'
+    if "或" in text:
+        return True
+    return False
 
 # --------- CJK helpers ---------
 
@@ -208,7 +234,7 @@ def _headers_for(char: str) -> dict[str, str]:
         ),
         "Accept": "application/json",
         "Content-Type": "application/json",
-        "Referer": f"https://zi.tools/zi/{char}",
+        "Referer": f"https://zi.tools/zi/{quote(char)}",
         "Origin": "https://zi.tools",
     }
 
@@ -254,44 +280,39 @@ def fetch_character(
 
 def extract_author_and_source(row: list) -> tuple[str, str]:
     """
-    Mirror of the user's standalone extract_author_and_source. 
     Returns `(author, work)` as raw (possibly simplified) strings.
     "Unknown" means no value was supplied by the API.
 
-    Row indices we care about (positional, not keyed):
-    - row[0]: fallback author
-    - row[1]: primary author (preferred when non-empty)
-    - row[7]: work title OR overflowed author
-    - row[8]: work title (when non-empty means row[7] is the author)
+    Row indices that carry attribution (all others are internal IDs):
+    - row[7]: calligrapher name OR work title (disambiguated by heuristics)
+    - row[8]: work title when populated (row[7] is then the calligrapher);
+              confirmed always empty in practice but handled for correctness
     """
     def safe(i: int) -> str:
         return row[i] if len(row) > i and isinstance(row[i], str) else ""
-
-    # Author: prefer row[1] when present, else fall back to row[0]
-    primary = safe(1)
-    fallback = safe(0)
-    author = primary or fallback or "Unknown"
 
     seven = safe(7)
     eight = safe(8)
 
     if eight:
-        # Both fields populated: row[7] is the author, row[8] the work.
-        # Let row[7] override when it's a real name (not empty).
-        if seven:
-            author = seven
+        # row[7] = calligrapher, row[8] = work
+        author = seven or "Unknown"
         work = eight
     elif seven:
-        # Only row[7] populated — suffix heuristic decides.
         if looks_like_work(seven):
             work = seven
+            author = "Unknown"
+        elif looks_like_period(seven):
+            # Time period label (e.g. 西周早期) — not a calligrapher or work
+            author = "Unknown"
+            work = "Unknown"
         else:
-            # It's an author name with no work attribution.
             author = seven
             work = "Unknown"
     else:
+        author = "Unknown"
         work = "Unknown"
-    
+
     return author, work
 
 def parse_row(row: list) -> Optional[dict]:
@@ -303,7 +324,7 @@ def parse_row(row: list) -> Optional[dict]:
     if not isinstance(row, list) or len(row) < 5:
         return None
     b64 = row[4]
-    if not isinstance(b64, str) or not b64.startswith("ivBOR"):
+    if not isinstance(b64, str) or not b64.startswith("iVBOR"):
         return None
     
     dynasty = row[6] if len(row) > 6 and isinstance(row[6], str) else ""
@@ -376,15 +397,6 @@ def main() -> int:
         help=f"DELETE rows with source='{SOURCE_TAG}' before scraping.",
     )
     parser.add_argument(
-        "--saturation",
-        type=int,
-        default=30,
-        help=(
-            "Skip characters that already have this many zi.tools rows "
-            "(default: 30). Ignored when --clean-source is set."
-        ),
-    )
-    parser.add_argument(
         "--errors-log",
         default="data/zi_tools_errors.log",
         help="Per-row error log path (default: data/zi_tools_errors.log)",
@@ -423,14 +435,26 @@ def main() -> int:
         )
         return 1
 
+    # Scrape-tracking table — created here so it lives in the same DB without
+    # requiring a Drizzle migration.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS zi_tools_scrapes (
+            character TEXT PRIMARY KEY,
+            scraped_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
     if args.clean_source and not args.dry_run:
         cursor.execute(
             "DELETE FROM calligraphy_images WHERE source = ?",
             (SOURCE_TAG,)
         )
         deleted = cursor.rowcount
+        # Also clear the scrape tracker so those characters are re-fetched
+        cursor.execute("DELETE FROM zi_tools_scrapes")
         conn.commit()
-        print(f"cleaned {deleted} existing rows with source={SOURCE_TAG}")
+        print(f"cleaned {deleted} existing rows with source={SOURCE_TAG} and reset scrape tracker")
 
     output_dir = Path(args.output_dir)
 
@@ -462,17 +486,14 @@ def main() -> int:
             if len(trad_char) != 1 or not _is_cjk(trad_char):
                 trad_char = next((c for c in trad_char if _is_cjk(c)), char)
             
-            # Saturation check
-            if not args.clean_source:
-                cursor.execute(
-                    "SELECT COUNT(*) FROM calligraphy_images ci "
-                    "JOIN characters c ON c.id = ci.character_id "
-                    "WHERE ci.source = ? AND c.character = ?",
-                    (SOURCE_TAG, trad_char)
-                )
-                if cursor.fetchone()[0] >= args.saturation:
-                    continue
-            
+            # Skip characters already fully scraped
+            cursor.execute(
+                "SELECT 1 FROM zi_tools_scrapes WHERE character = ?",
+                (trad_char,)
+            )
+            if cursor.fetchone():
+                continue
+
             data = fetch_character(session, trad_char)
             time.sleep(args.rate)
             if not data:
@@ -517,6 +538,10 @@ def main() -> int:
                     author_trad = _s2t_convert(parsed["author"])
                     work_trad = _s2t_convert(parsed["work"])
                     dynasty = parsed["dynasty"]
+
+                    # Skip rows with no usable attribution
+                    if author_trad == "Unknown" and work_trad == "Unknown":
+                        continue
 
                     hex_code = char_to_unicode_hex(trad_char)
                     stem = hashlib.md5(parsed["b64"].encode("utf-8")).hexdigest()[:16]
@@ -565,8 +590,14 @@ def main() -> int:
                             print(f"  error on {trad_char}/{slug}: {e}", file=sys.stderr)
                         continue
 
-        if not args.dry_run:
-            conn.commit()
+            # Mark character as fully scraped so future runs skip the API call
+            if not args.dry_run:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO zi_tools_scrapes (character, scraped_at) "
+                    "VALUES (?, datetime('now'))",
+                    (trad_char,)
+                )
+                conn.commit()
 
     finally:
         if errors_log is not None:
