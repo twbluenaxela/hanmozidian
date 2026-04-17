@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import JiziPicker from "@/components/JiziPicker";
 import CalligraphyCharacter from "@/components/CalligraphyCharacter";
+import { resolveCurrentImage } from "@/lib/utils";
 import { toPng } from 'html-to-image';
 
 const STYLES = [
@@ -203,8 +204,9 @@ export default function JiziPage() {
         </div>
 
         {/* EXPORT WRAPPER (Issues 2, 3, 4 Fix) */}
-        <div className="flex-1 overflow-auto custom-scrollbar p-4 md:p-12 relative flex justify-center">
-          <div 
+        <div data-testid="jizi-scroll" className="flex-1 overflow-auto custom-scrollbar p-4 md:p-12 relative flex justify-center items-start">
+          <div
+            data-testid="jizi-canvas"
             ref={canvasRef}
             style={{ 
               backgroundColor: paper.color,
@@ -236,27 +238,15 @@ export default function JiziPage() {
             {results.map((res, idx) => {
               const s = composition[idx] || DEFAULT_SETTINGS;
               
-              // Issue 5: Strict String Coercion to prevent ID mismatch
-              let currentImg = null;
-              if (res.images && res.images.length > 0) {
-                // Try to find the specific selected ID for THIS character
-                if (s.selectedImageId) {
-                  currentImg = res.images.find((i: any) => String(i.id) === String(s.selectedImageId));
-                }
-                
-                // FALLBACK: If the selectedImageId doesn't exist for this character,
-                // use the character's first available image instead of breaking.
-                if (!currentImg) {
-                  currentImg = res.images[0];
-                }
-              }
+              const currentImg = resolveCurrentImage(res.images ?? [], s.selectedImageId);
 
               const isSelected = activeIndices.includes(idx);
               
               return (
-                <div 
-                  key={`${idx}-${currentImg?.id || 'empty'}`} 
-                  onClick={(e) => handleCharClick(idx, e)} 
+                <div
+                  data-testid="char-cell"
+                  key={`${idx}-${currentImg?.id || 'empty'}`}
+                  onClick={(e) => handleCharClick(idx, e)}
                   style={{ writingMode: 'horizontal-tb', width: gridSize, height: gridSize, transform: `translate(${s.offsetX}px, ${s.offsetY}px) scale(${s.scale}) rotate(${s.rotation}deg)`, }}
                   className={`relative cursor-pointer transition-all duration-200 flex items-center justify-center shrink-0 ${isSelected ? 'z-10' : 'opacity-95'}`}
                 >
