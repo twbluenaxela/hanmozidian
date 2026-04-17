@@ -226,7 +226,7 @@ export default function JiziPage() {
               padding: '60px', // Breathing room for export
               
               // 5. Ensure the paper grows horizontally in vertical mode
-              width: orientation === 'horizontal' ? '100%' : 'auto',
+              width: 'auto',
               maxWidth: orientation === 'horizontal' ? '800px' : 'none',
               minWidth: 'fit-content',
               minHeight: 'fit-content'
