@@ -7,7 +7,8 @@
       "WebSearch",
       "WebFetch(domain:ctext.org)",
       "WebFetch(domain:www.gushiwen.cn)",
-      "WebFetch(domain:9610.com)"
+      "WebFetch(domain:9610.com)",
+      "WebFetch(domain:zh.wikipedia.org)"
     ]
   }
 }
