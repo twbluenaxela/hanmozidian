@@ -349,6 +349,210 @@ def process_image_bytes(raw: bytes, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     img.save(str(dst), "WEBP", quality=85)
 
+# --------- core scraping loop (importable by scrape_corpus.py) ---------
+
+def scrape_chars(
+    chars: list[str],
+    db_path: str = "data/shufazidian.db",
+    output_dir: str = "public/images",
+    delay: float = 2.0,
+    limit: Optional[int] = None,
+    dry_run: bool = False,
+    clean_source: bool = False,
+    errors_log_path: str = "data/zi_tools_errors.log",
+) -> dict[str, int]:
+    """Scrape zi.tools for each character in *chars*.
+
+    Skips characters already recorded in zi_tools_scrapes. Returns a
+    {style_slug: image_count} breakdown dict. Importable by scrape_corpus.py.
+    """
+    if limit:
+        chars = chars[:limit]
+
+    if not chars:
+        print("no CJK characters to scrape")
+        return {}
+
+    print(f"will scrape {len(chars)} unique characters")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA foreign_keys = ON")
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT slug, id FROM script_styles")
+    style_id_by_slug = {slug: sid for slug, sid in cursor.fetchall()}
+    missing = set(STYLE_LABEL_TO_SLUG.values()) - style_id_by_slug.keys()
+    if missing:
+        print(
+            f"error: script_styles is missing slugs {missing}. "
+            "Run `npx tsx scripts/seed_reference.ts` first.",
+            file=sys.stderr,
+        )
+        conn.close()
+        return {}
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS zi_tools_scrapes (
+            character TEXT PRIMARY KEY,
+            scraped_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+    if clean_source and not dry_run:
+        cursor.execute("DELETE FROM calligraphy_images WHERE source = ?", (SOURCE_TAG,))
+        deleted = cursor.rowcount
+        cursor.execute("DELETE FROM zi_tools_scrapes")
+        conn.commit()
+        print(f"cleaned {deleted} existing rows with source={SOURCE_TAG} and reset scrape tracker")
+
+    out_dir = Path(output_dir)
+
+    cursor.execute("SELECT image_path FROM calligraphy_images WHERE source = ?", (SOURCE_TAG,))
+    existing_paths: set[str] = {row[0] for row in cursor.fetchall()}
+    if existing_paths:
+        print(f"found {len(existing_paths)} existing {SOURCE_TAG} rows; will skip duplicates")
+
+    errors_path = Path(errors_log_path)
+    errors_path.parent.mkdir(parents=True, exist_ok=True)
+    errors_log = None if dry_run else open(errors_path, "a", encoding="utf-8")
+
+    session = requests.Session()
+
+    total_inserted = 0
+    total_skipped_dup = 0
+    total_errors = 0
+    per_style: dict[str, int] = {}
+
+    try:
+        for char in tqdm(chars, desc="characters", unit="char"):
+            trad_char = _s2t_convert(char)
+            if len(trad_char) != 1 or not _is_cjk(trad_char):
+                trad_char = next((c for c in trad_char if _is_cjk(c)), char)
+
+            cursor.execute("SELECT 1 FROM zi_tools_scrapes WHERE character = ?", (trad_char,))
+            if cursor.fetchone():
+                continue
+
+            data = fetch_character(session, trad_char)
+            time.sleep(delay)
+            if not data:
+                continue
+
+            tu = data.get("tu") or []
+            if not tu:
+                continue
+            style_groups = tu[0].get("styles") or []
+
+            for group in style_groups:
+                raw_style = (group.get("style") or "").strip()
+                slug = STYLE_LABEL_TO_SLUG.get(raw_style)
+                if not slug:
+                    continue
+                style_id = style_id_by_slug[slug]
+                rows = group.get("rows") or []
+
+                for row in rows:
+                    parsed = parse_row(row)
+                    if parsed is None:
+                        continue
+
+                    try:
+                        raw_bytes = base64.b64decode(parsed["b64"], validate=False)
+                    except Exception as e:
+                        total_errors += 1
+                        if errors_log is not None:
+                            errors_log.write(f"{trad_char}\t{slug}\tbase64:{e}\n")
+                        continue
+
+                    if len(raw_bytes) > MAX_IMAGE_BYTES:
+                        total_errors += 1
+                        if errors_log is not None:
+                            errors_log.write(f"{trad_char}\t{slug}\toversized:{len(raw_bytes)}\n")
+                        continue
+
+                    author_trad = _s2t_convert(parsed["author"])
+                    work_trad = _s2t_convert(parsed["work"])
+                    dynasty = parsed["dynasty"]
+
+                    if author_trad == "Unknown" and work_trad == "Unknown":
+                        continue
+
+                    hex_code = char_to_unicode_hex(trad_char)
+                    stem = hashlib.md5(parsed["b64"].encode("utf-8")).hexdigest()[:16]
+                    rel_out = f"images/{slug}/{hex_code}/{stem}.webp"
+
+                    if rel_out in existing_paths:
+                        total_skipped_dup += 1
+                        continue
+
+                    if dry_run:
+                        total_inserted += 1
+                        per_style[slug] = per_style.get(slug, 0) + 1
+                        existing_paths.add(rel_out)
+                        continue
+
+                    try:
+                        out_path = out_dir / slug / hex_code / f"{stem}.webp"
+                        process_image_bytes(raw_bytes, out_path)
+
+                        char_id = get_or_create_character(cursor, trad_char)
+                        cal_id = get_or_create_calligrapher(cursor, author_trad, dynasty)
+                        work_id = get_or_create_work(cursor, work_trad, cal_id, style_id)
+
+                        cursor.execute(
+                            """
+                            INSERT INTO calligraphy_images
+                            (character_id, style_id, calligrapher_id, work_id, image_path, source)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (char_id, style_id, cal_id, work_id, rel_out, SOURCE_TAG),
+                        )
+                        total_inserted += 1
+                        per_style[slug] = per_style.get(slug, 0) + 1
+                        existing_paths.add(rel_out)
+
+                        if total_inserted % 50 == 0:
+                            conn.commit()
+                    except Exception as e:
+                        total_errors += 1
+                        if errors_log is not None:
+                            errors_log.write(f"{trad_char}\t{slug}\t{type(e).__name__}: {e}\n")
+                            errors_log.flush()
+                        else:
+                            print(f"  error on {trad_char}/{slug}: {e}", file=sys.stderr)
+                        continue
+
+            if not dry_run:
+                cursor.execute(
+                    "INSERT OR REPLACE INTO zi_tools_scrapes (character, scraped_at) "
+                    "VALUES (?, datetime('now'))",
+                    (trad_char,),
+                )
+                conn.commit()
+
+    finally:
+        if errors_log is not None:
+            errors_log.close()
+        conn.commit()
+        conn.close()
+
+    mode = "DRY RUN" if dry_run else "INSERT"
+    print(f"\n==== per-style breakdown ====")
+    for slug, n in sorted(per_style.items(), key=lambda kv: -kv[1]):
+        print(f"{slug:8s} {n:7d}")
+    print("============================")
+    print(
+        f"{mode}: total images = {total_inserted}, "
+        f"skipped (dup) = {total_skipped_dup}, "
+        f"errors = {total_errors}"
+    )
+    if total_errors and not dry_run:
+        print(f"error log: {errors_log_path}")
+    return per_style
+
+
 # --------- main ---------
 
 def main() -> int:
@@ -403,222 +607,29 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # Resolve input characters
     if args.chars_file:
         text = Path(args.chars_file).read_text(encoding="utf-8")
     else:
         text = args.chars or ""
-    
+
     chars = unique_cjk_chars(text)
-    if args.limit:
-        chars = chars[: args.limit]
-    
+
     if not chars:
         print("error: no CJK characters to scrape")
         return 1
-    
-    print(f"will scrape {len(chars)} unique characters")
 
-    # DB setup
-    conn = sqlite3.connect(args.db)
-    conn.execute("PRAGMA journal_mode = WAL")
-    conn.execute("PRAGMA foreign_keys = ON")
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT slug, id FROM script_styles")
-    style_id_by_slug = {slug: sid for slug, sid in cursor.fetchall()}
-    missing = set(STYLE_LABEL_TO_SLUG.values()) - style_id_by_slug.keys()
-    if missing:
-        print(
-            f"error: script_styles is missing slugs {missing}. "
-            "Run `npx tsx scripts/seed_reference.ts` first."
-        )
-        return 1
-
-    # Scrape-tracking table — created here so it lives in the same DB without
-    # requiring a Drizzle migration.
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS zi_tools_scrapes (
-            character TEXT PRIMARY KEY,
-            scraped_at TEXT NOT NULL
-        )
-    """)
-    conn.commit()
-
-    if args.clean_source and not args.dry_run:
-        cursor.execute(
-            "DELETE FROM calligraphy_images WHERE source = ?",
-            (SOURCE_TAG,)
-        )
-        deleted = cursor.rowcount
-        # Also clear the scrape tracker so those characters are re-fetched
-        cursor.execute("DELETE FROM zi_tools_scrapes")
-        conn.commit()
-        print(f"cleaned {deleted} existing rows with source={SOURCE_TAG} and reset scrape tracker")
-
-    output_dir = Path(args.output_dir)
-
-    # Pre-fetch existing image_paths so we can skip duplicates without
-    # --clean-source. Filenames are md5(b64)-deterministic, so any repeat
-    # call for the same glyph lands on the same path.
-    cursor.execute(
-        "SELECT image_path FROM calligraphy_images WHERE source = ?",
-        (SOURCE_TAG,)
+    scrape_chars(
+        chars=chars,
+        db_path=args.db,
+        output_dir=args.output_dir,
+        delay=args.rate,
+        limit=args.limit,
+        dry_run=args.dry_run,
+        clean_source=args.clean_source,
+        errors_log_path=args.errors_log,
     )
-    existing_paths: set[str] = {row[0] for row in cursor.fetchall()}
-    if existing_paths:
-        print(f"found {len(existing_paths)} existing {SOURCE_TAG} rows; will skip duplicates")
-
-    errors_path = Path(args.errors_log)
-    errors_path.parent.mkdir(parents=True, exist_ok=True)
-    errors_log = None if args.dry_run else open(errors_path, "a", encoding="utf-8")
-
-    session = requests.Session()
-
-    total_inserted = 0
-    total_skipped_dup = 0
-    total_errors = 0
-    per_style: dict[str, int] = {}
-
-    try:
-        for char in tqdm(chars, desc="characters", unit="char"):
-            trad_char = _s2t_convert(char)
-            if len(trad_char) != 1 or not _is_cjk(trad_char):
-                trad_char = next((c for c in trad_char if _is_cjk(c)), char)
-            
-            # Skip characters already fully scraped
-            cursor.execute(
-                "SELECT 1 FROM zi_tools_scrapes WHERE character = ?",
-                (trad_char,)
-            )
-            if cursor.fetchone():
-                continue
-
-            data = fetch_character(session, trad_char)
-            time.sleep(args.rate)
-            if not data:
-                continue
-            
-            tu = data.get("tu") or []
-            if not tu:
-                continue
-            style_groups = tu[0].get("styles") or []
-
-            for group in style_groups:
-                raw_style = (group.get("style") or "").strip()
-                slug = STYLE_LABEL_TO_SLUG.get(raw_style)
-                if not slug:
-                    continue
-                style_id = style_id_by_slug[slug]
-                rows = group.get("rows") or []
-
-                for row in rows:
-                    parsed = parse_row(row)
-                    if parsed is None:
-                        continue
-                    
-                    try:
-                        raw_bytes = base64.b64decode(parsed["b64"], validate=False)
-                    except Exception as e:
-                        total_errors += 1
-                        if errors_log is not None:
-                            errors_log.write(
-                                f"{trad_char}\t{slug}\tbase64:{e}\n"
-                            )
-                        continue
-                    
-                    if len(raw_bytes) > MAX_IMAGE_BYTES:
-                        total_errors += 1
-                        if errors_log is not None:
-                            errors_log.write(
-                                f"{trad_char}\t{slug}\toversized:{len(raw_bytes)}\n"
-                            )
-                        continue
-
-                    author_trad = _s2t_convert(parsed["author"])
-                    work_trad = _s2t_convert(parsed["work"])
-                    dynasty = parsed["dynasty"]
-
-                    # Skip rows with no usable attribution
-                    if author_trad == "Unknown" and work_trad == "Unknown":
-                        continue
-
-                    hex_code = char_to_unicode_hex(trad_char)
-                    stem = hashlib.md5(parsed["b64"].encode("utf-8")).hexdigest()[:16]
-                    rel_out = f"images/{slug}/{hex_code}/{stem}.webp"
-
-                    if rel_out in existing_paths:
-                        total_skipped_dup += 1
-                        continue
-                    
-                    if args.dry_run:
-                        total_inserted += 1
-                        per_style[slug] = per_style.get(slug, 0) + 1
-                        existing_paths.add(rel_out)
-                        continue
-
-                    try:
-                        out_path = output_dir / slug / hex_code / f"{stem}.webp"
-                        process_image_bytes(raw_bytes, out_path)
-
-                        char_id = get_or_create_character(cursor, trad_char)
-                        cal_id = get_or_create_calligrapher(cursor, author_trad, dynasty)
-                        work_id = get_or_create_work(cursor, work_trad, cal_id, style_id)
-
-                        cursor.execute(
-                            """
-                            INSERT INTO calligraphy_images
-                            (character_id, style_id, calligrapher_id, work_id, image_path, source)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            """,
-                            (char_id, style_id, cal_id, work_id, rel_out, SOURCE_TAG),
-                        )
-                        total_inserted += 1
-                        per_style[slug] = per_style.get(slug, 0) + 1
-                        existing_paths.add(rel_out)
-
-                        if total_inserted % 50 == 0:
-                            conn.commit()
-                    except Exception as e:
-                        total_errors += 1
-                        if errors_log is not None:
-                            errors_log.write(
-                                f"{trad_char}\t{slug}\t{type(e).__name__}: {e}\n"
-                            )
-                            errors_log.flush()
-                        else:
-                            print(f"  error on {trad_char}/{slug}: {e}", file=sys.stderr)
-                        continue
-
-            # Mark character as fully scraped so future runs skip the API call
-            if not args.dry_run:
-                cursor.execute(
-                    "INSERT OR REPLACE INTO zi_tools_scrapes (character, scraped_at) "
-                    "VALUES (?, datetime('now'))",
-                    (trad_char,)
-                )
-                conn.commit()
-
-    finally:
-        if errors_log is not None:
-            errors_log.close()
-        conn.commit()
-        conn.close()
-
-    # -------- summary --------
-    mode = "DRY RUN" if args.dry_run else "INSERT"
-    print(f"\n==== per-style breakdown ====")
-    for slug, n in sorted(per_style.items(), key=lambda kv: -kv[1]):
-        print(f"{slug:8s} {n:7d}")
-    print("============================")
-    print(
-        f"{mode}: total images = {total_inserted}, "
-        f"skipped (dup) = {total_skipped_dup}, "
-        f"errors = {total_errors}"
-    )
-    if total_errors and not args.dry_run:
-        print(f"error log: {errors_path}")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

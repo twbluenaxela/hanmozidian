@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wsl mkdir *)",
+      "Bash(wsl bash *)",
+      "WebFetch(domain:zh.wikisource.org)",
+      "WebSearch",
+      "WebFetch(domain:ctext.org)",
+      "WebFetch(domain:www.gushiwen.cn)",
+      "WebFetch(domain:9610.com)"
+    ]
+  }
+}
