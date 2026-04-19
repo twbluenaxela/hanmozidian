@@ -119,7 +119,7 @@ STYLE_LABEL_TO_SLUG = {
 # author name" when a row has only one of the two fields. Any of these
 # suffix characters implies a work title. Ported directly from the
 # user's standalone scraper.
-WORK_SUFFIX_CHARS = frozenset("碑帖序經銘誌卷書簡文盟版石鼎")
+WORK_SUFFIX_CHARS = frozenset("碑帖序經銘誌卷書簡文盟版石鼎記賦表賜")
 _WORK_SUFFIX_EXTRAS = ("字典",)  # 2-char suffixes
 
 def looks_like_work(text: str) -> bool:
@@ -289,7 +289,7 @@ def extract_author_and_source(row: list) -> tuple[str, str]:
               confirmed always empty in practice but handled for correctness
     """
     def safe(i: int) -> str:
-        return row[i] if len(row) > i and isinstance(row[i], str) else ""
+        return (row[i] if len(row) > i and isinstance(row[i], str) else "").strip()
 
     seven = safe(7)
     eight = safe(8)

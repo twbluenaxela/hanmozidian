@@ -55,7 +55,10 @@ def extract_global_chars(pieces: list[dict]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
     for piece in pieces:
-        for ch in piece.get("text", ""):
+        text = piece.get("text", "")
+        if not isinstance(text, str):
+            continue
+        for ch in text:
             if not _is_cjk(ch):
                 continue
             trad = _s2t_convert(ch)
