@@ -8,7 +8,18 @@
       "WebFetch(domain:ctext.org)",
       "WebFetch(domain:www.gushiwen.cn)",
       "WebFetch(domain:9610.com)",
-      "WebFetch(domain:zh.wikipedia.org)"
+      "WebFetch(domain:zh.wikipedia.org)",
+      "Read(//mnt/c/Users/**)",
+      "Read(///wsl.localhost/Ubuntu/mnt/**)",
+      "Bash(wslpath \"\\\\\\\\\\\\\\\\wsl.localhost\\\\\\\\Ubuntu\\\\\\\\home\\\\\\\\redna\\\\\\\\shufazidian\")",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import sqlite3; conn = sqlite3.connect\\('//wsl.localhost/Ubuntu/home/redna/shufazidian/data/shufazidian.db'\\); print\\(conn.execute\\('SELECT COUNT\\(*\\) FROM calligraphy_images'\\).fetchone\\(\\)\\)\")",
+      "Bash(cd \"\\\\\\\\wsl.localhost\\\\Ubuntu\\\\home\\\\redna\\\\shufazidian\")",
+      "Bash(python3 scripts/generate_gallery.py --limit 30)",
+      "Bash(wsl -e bash -c \"cd /home/redna/shufazidian && python3 scripts/generate_gallery.py --limit 30 2>&1\")",
+      "Bash(wsl -e bash -c \"cd /home/redna/shufazidian && python3 -c \\\\\"import sqlite3; conn=sqlite3.connect\\('data/shufazidian.db'\\); print\\(conn.execute\\(\\\\\\\\\\\\\"SELECT sql FROM sqlite_master WHERE name='calligraphy_images'\\\\\\\\\\\\\"\\).fetchone\\(\\)[0]\\)\\\\\"\")",
+      "Bash(wsl -e bash -c \"cd /home/redna/shufazidian && python3 scripts/generate_gallery.py --limit 200 --out public/gallery.html 2>&1\")",
+      "Bash(wsl -e bash -c \"cd /home/redna/shufazidian && wc -c public/gallery.html && echo bytes\")"
     ]
   }
 }
