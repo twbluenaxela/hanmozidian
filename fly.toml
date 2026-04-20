@@ -9,12 +9,12 @@ primary_region = 'lhr'
 [build]
 
 [build.args]
-  NEXT_PUBLIC_FIREBASE_API_KEY="AIzaSyD6KM093-JZl_0CHawnCnrTwoTgqrZ-8J0"
-  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN='shufadictionary.firebaseapp.com'
-  NEXT_PUBLIC_FIREBASE_PROJECT_ID='shufadictionary'
-  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET='shufadictionary.firebasestorage.app'
-  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID='405095846717'
-  NEXT_PUBLIC_FIREBASE_APP_ID=1:'405095846717:web:bcaa7742af934707a62b54'
+  NEXT_PUBLIC_FIREBASE_API_KEY = "AIzaSyD6KM093-JZl_0CHawnCnrTwoTgqrZ-8J0"
+  NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN = "shufadictionary.firebaseapp.com"
+  NEXT_PUBLIC_FIREBASE_PROJECT_ID = "shufadictionary"
+  NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET = "shufadictionary.firebasestorage.app"
+  NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID = "405095846717"
+  NEXT_PUBLIC_FIREBASE_APP_ID = "1:405095846717:web:bcaa7742af934707a62b54"
 
 [http_service]
   internal_port = 8080
