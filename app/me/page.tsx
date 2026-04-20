@@ -10,6 +10,7 @@ import {
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuth } from "@/lib/auth-context";
+import { useFavorites } from "@/lib/favorites";
 
 const AUTH_ERRORS: Record<string, string> = {
   "auth/wrong-password": "密碼錯誤，請再試一次",
@@ -27,6 +28,7 @@ function authErrorMessage(code: string) {
 
 export default function MePage() {
   const { user, loading } = useAuth();
+  const favorites = useFavorites(user?.uid ?? null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -150,6 +152,30 @@ export default function MePage() {
       >
         登出
       </button>
+
+      <div className="w-full max-w-2xl">
+        <h2 className="font-display text-sm tracking-widest text-[var(--muted)] mb-3 px-1">收藏</h2>
+        {favorites.length === 0 ? (
+          <p className="text-sm text-[var(--muted)] text-center py-10">尚未收藏任何字</p>
+        ) : (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+            {favorites.map((fav) => (
+              <div key={fav.id} className="flex flex-col items-center gap-1">
+                <div className="w-full aspect-square bg-[var(--card-bg)] rounded-lg overflow-hidden border border-[var(--border)]">
+                  <img
+                    src={fav.imagePath}
+                    alt={fav.character}
+                    className="w-full h-full object-contain p-1"
+                  />
+                </div>
+                <span className="font-display text-xs text-[var(--muted)] truncate w-full text-center">
+                  {fav.character} · {fav.calligrapherName ?? ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

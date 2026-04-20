@@ -17,9 +17,11 @@ interface ImageData {
 interface ImageGridProps {
   images: ImageData[];
   onImageClick: (image: ImageData) => void;
+  character?: string;
+  favoritedIds?: Set<number>;
 }
 
-export default function ImageGrid({ images, onImageClick }: ImageGridProps) {
+export default function ImageGrid({ images, onImageClick, character, favoritedIds }: ImageGridProps) {
   if (images.length === 0) {
     return (
       <div className="flex items-center justify-center h-48 text-[var(--muted)]">
@@ -37,6 +39,14 @@ export default function ImageGrid({ images, onImageClick }: ImageGridProps) {
           calligrapherName={img.calligrapherName}
           workName={img.workName}
           onClick={() => onImageClick(img)}
+          favoriteImage={character ? {
+            id: img.id,
+            imagePath: img.imagePath,
+            character,
+            styleSlug: img.styleSlug,
+            calligrapherName: img.calligrapherName,
+          } : undefined}
+          isFavorited={favoritedIds?.has(img.id) ?? false}
         />
       ))}
     </div>

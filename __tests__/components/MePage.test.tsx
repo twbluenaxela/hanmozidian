@@ -23,6 +23,10 @@ jest.mock("@/lib/auth-context", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
+jest.mock("@/lib/favorites", () => ({
+  useFavorites: jest.fn().mockReturnValue([]),
+}));
+
 beforeEach(() => {
   jest.clearAllMocks();
 });

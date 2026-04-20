@@ -7,6 +7,8 @@ import StyleTabs from "@/components/StyleTabs";
 import ImageGrid from "@/components/ImageGrid";
 import ImageModal from "@/components/ImageModal";
 import JiziPicker from "@/components/JiziPicker";
+import { useAuth } from "@/lib/auth-context";
+import { useFavorites } from "@/lib/favorites";
 
 interface StyleCount {
   slug: string;
@@ -34,6 +36,10 @@ export default function CharacterPage({
   const { char: rawChar } = use(params);
   const char = decodeURIComponent(rawChar);
   const router = useRouter();
+
+  const { user } = useAuth();
+  const favorites = useFavorites(user?.uid ?? null);
+  const favoritedIds = new Set(favorites.map((f) => f.id));
 
   const [styleCounts, setStyleCounts] = useState<StyleCount[]>([]);
   const [activeStyle, setActiveStyle] = useState<string | null>(null);
@@ -147,6 +153,8 @@ export default function CharacterPage({
               <ImageGrid
                 images={images}
                 onImageClick={(img) => setSelectedImage(img)}
+                character={char}
+                favoritedIds={favoritedIds}
               />
             )}
           </div>
