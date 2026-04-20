@@ -28,6 +28,8 @@ Open http://localhost:3000.
 
 ## Environment Variables (`.env.local`)
 
+Copy `.env.local.example` to `.env.local` and fill in the values.
+
 ```
 R2_ENDPOINT=
 R2_ACCESS_KEY_ID=
@@ -35,7 +37,16 @@ R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=shufazidian
 R2_PUBLIC_URL=
 USE_R2=false
+
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
 ```
+
+**Firebase setup:** Create a project at [console.firebase.google.com](https://console.firebase.google.com), enable **Authentication** (Google + Email/Password providers) and **Firestore Database**, then copy the web app config values into `.env.local`.
 
 The app only rewrites `<img>` URLs to the R2 bucket when `USE_R2=true` **and** `R2_PUBLIC_URL` is set. In development, keep `USE_R2` unset (or `false`) so images are served from `public/images/` — this lets you keep R2 credentials in `.env.local` without every image 404-ing against an empty bucket. In production, set both `USE_R2=true` and `R2_PUBLIC_URL` to your R2 public URL (or custom domain) after uploading images.
 

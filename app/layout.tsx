@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: "書法字典",
@@ -16,8 +17,10 @@ export default function RootLayout({
   return (
     <html lang="zh" className="h-full antialiased">
       <body className="min-h-full flex flex-col pb-16">
-        <main className="flex-1">{children}</main>
-        <BottomNav />
+        <AuthProvider>
+          <main className="flex-1">{children}</main>
+          <BottomNav />
+        </AuthProvider>
       </body>
     </html>
   );
