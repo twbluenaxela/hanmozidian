@@ -27,7 +27,13 @@
       "Bash(wsl.exe -e bash -c \"sqlite3 /home/redna/shufazidian/data/shufazidian.db \\\\\"SELECT id, name_zh FROM calligraphers WHERE name_zh LIKE '\\(%' OR name_zh LIKE '%傳%' ORDER BY id;\\\\\"\")",
       "Bash(wsl.exe -e bash -c \"sqlite3 /home/redna/shufazidian/data/shufazidian.db \\\\\"UPDATE calligraphy_images SET calligrapher_id=NULL WHERE calligrapher_id=78; DELETE FROM calligraphers WHERE id=78; SELECT changes\\(\\);\\\\\"\")",
       "Bash(wsl.exe -e bash -c \"mkdir -p /home/redna/shufazidian/app/api/browse && mkdir -p /home/redna/shufazidian/app/browse\")",
-      "Bash(wsl.exe -e bash -c \"grep -n '集字\\\\|jizi\\\\|href\\\\|Link\\\\|router' /home/redna/shufazidian/app/page.tsx | head -20\")"
+      "Bash(wsl.exe -e bash -c \"grep -n '集字\\\\|jizi\\\\|href\\\\|Link\\\\|router' /home/redna/shufazidian/app/page.tsx | head -20\")",
+      "Bash(npm install *)",
+      "Bash(node -e \"require\\('./node_modules/firebase/app'\\)\")",
+      "Bash(npx tsc *)",
+      "Bash(npx jest *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }
