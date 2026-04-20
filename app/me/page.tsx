@@ -403,7 +403,7 @@ export default function MePage() {
               {favorites.map((fav) => (
                 <div key={fav.id} className="flex flex-col items-center gap-1">
                   <div className="relative w-full aspect-square bg-[var(--card-bg)] rounded-lg overflow-hidden border border-[var(--border)] hover:border-[var(--accent-dim)] transition-colors">
-                    <img src={fav.imagePath} alt={fav.character} className="w-full h-full object-contain p-1" />
+                    <img src={fav.imageUrl || `/${fav.imagePath}`} alt={fav.character} className="w-full h-full object-contain p-1" />
                     <FavoriteButton image={fav} isFavorited={true} />
                   </div>
                   <span className="font-display text-xs text-[var(--muted)] truncate w-full text-center">

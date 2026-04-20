@@ -14,6 +14,7 @@ import { db } from "@/lib/firebase";
 export interface FavoriteImage {
   id: number;
   imagePath: string;
+  imageUrl: string;
   character: string;
   styleSlug: string;
   calligrapherName: string | null;
@@ -31,6 +32,7 @@ export async function addFavorite(uid: string, image: FavoriteImage) {
   await setDoc(favoriteDoc(uid, image.id), {
     imageId: image.id,
     imagePath: image.imagePath,
+    imageUrl: image.imageUrl,
     character: image.character,
     styleSlug: image.styleSlug,
     calligrapherName: image.calligrapherName,

@@ -42,6 +42,7 @@ export default function ImageGrid({ images, onImageClick, character, favoritedId
           favoriteImage={character ? {
             id: img.id,
             imagePath: img.imagePath,
+            imageUrl: img.imageUrl,
             character,
             styleSlug: img.styleSlug,
             calligrapherName: img.calligrapherName,
