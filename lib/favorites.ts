@@ -52,7 +52,12 @@ export function useFavorites(uid: string | null) {
     }
     const ref = collection(db, "users", uid, "favorites");
     const unsubscribe = onSnapshot(ref, (snap) => {
-      setFavorites(snap.docs.map((d) => d.data() as Favorite));
+      setFavorites(
+        snap.docs.map((d) => {
+          const data = d.data();
+          return { ...data, id: data.imageId } as Favorite;
+        })
+      );
     });
     return unsubscribe;
   }, [uid]);

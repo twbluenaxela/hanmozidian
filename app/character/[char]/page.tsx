@@ -7,6 +7,7 @@ import StyleTabs from "@/components/StyleTabs";
 import ImageGrid from "@/components/ImageGrid";
 import ImageModal from "@/components/ImageModal";
 import JiziPicker from "@/components/JiziPicker";
+import ZitieModal from "@/components/ZitieModal";
 import { useAuth } from "@/lib/auth-context";
 import { useFavorites } from "@/lib/favorites";
 
@@ -49,6 +50,7 @@ export default function CharacterPage({
   const [selectedImage, setSelectedImage] = useState<ImageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [zitieOpen, setZitieOpen] = useState(false);
 
   // Fetch style counts on character change
   useEffect(() => {
@@ -251,14 +253,25 @@ export default function CharacterPage({
         </div>
       </aside>
 
+      {/* 字帖 modal */}
+      {zitieOpen && (
+        <ZitieModal
+          char={char}
+          images={images}
+          initialImageId={selectedImage?.id}
+          onClose={() => setZitieOpen(false)}
+        />
+      )}
+
       {/* Lightbox modal */}
-      {selectedImage && (
+      {selectedImage && !zitieOpen && (
         <ImageModal
           imageUrl={selectedImage.imageUrl}
           calligrapherName={selectedImage.calligrapherName}
           workName={selectedImage.workName}
           styleName={selectedImage.styleName}
           onClose={() => setSelectedImage(null)}
+          onZitie={() => setZitieOpen(true)}
         />
       )}
     </div>

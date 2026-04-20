@@ -10,8 +10,12 @@ import {
   GoogleAuthProvider,
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
+import FavoriteButton from "@/components/FavoriteButton";
 import { useAuth } from "@/lib/auth-context";
 import { useFavorites } from "@/lib/favorites";
+import { useSavedJizi, deleteSavedJizi, MAX_SAVED_JIZI, type SavedJizi } from "@/lib/savedJizi";
+import { JIZI_LOAD_KEY } from "@/app/jizi/page";
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -294,9 +298,16 @@ function AuthCard() {
 
 // ─── page ─────────────────────────────────────────────────────────────────────
 
+const STYLE_LABELS: Record<string, string> = {
+  jinwen: "金文", zhuan: "小篆", li: "隸書", kai: "楷書", xing: "行書", cao: "草書",
+};
+
 export default function MePage() {
   const { user, loading } = useAuth();
+  const router = useRouter();
   const favorites = useFavorites(user?.uid ?? null);
+  const savedJizi = useSavedJizi(user?.uid ?? null);
+  const [activeTab, setActiveTab] = useState<"favorites" | "jizi">("favorites");
 
   if (loading) {
     return (
@@ -358,29 +369,175 @@ export default function MePage() {
 
       <hr className="border-[var(--border)]" />
 
-      <div>
-        <p className="font-display text-xs tracking-[0.2em] text-[var(--muted)] mb-4">收藏</p>
-        {favorites.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-16 text-center">
-            <span className="font-display text-4xl text-[var(--border)]">字</span>
-            <p className="text-sm text-[var(--muted)]">尚未收藏任何字</p>
-            <p className="text-xs text-[var(--muted-dim)]">在字典頁點擊圖片上的 ♡ 即可收藏</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-            {favorites.map((fav) => (
-              <div key={fav.id} className="flex flex-col items-center gap-1">
-                <div className="w-full aspect-square bg-[var(--card-bg)] rounded-lg overflow-hidden border border-[var(--border)] hover:border-[var(--accent-dim)] transition-colors">
-                  <img src={fav.imagePath} alt={fav.character} className="w-full h-full object-contain p-1" />
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-[var(--border)]">
+        <button
+          onClick={() => setActiveTab("favorites")}
+          className={`px-4 py-2 text-sm font-bold transition-colors border-b-2 -mb-px ${activeTab === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"}`}
+        >
+          收藏
+        </button>
+        <button
+          onClick={() => setActiveTab("jizi")}
+          className={`px-4 py-2 text-sm font-bold transition-colors border-b-2 -mb-px ${activeTab === "jizi" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"}`}
+        >
+          集字作品
+          {savedJizi.length > 0 && (
+            <span className="ml-1.5 text-[10px] bg-[var(--card-bg)] border border-[var(--border)] rounded-full px-1.5 py-0.5 text-[var(--muted)]">
+              {savedJizi.length}/{MAX_SAVED_JIZI}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === "favorites" && (
+        <div>
+          {favorites.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <span className="font-display text-4xl text-[var(--border)]">字</span>
+              <p className="text-sm text-[var(--muted)]">尚未收藏任何字</p>
+              <p className="text-xs text-[var(--muted-dim)]">在字典頁點擊圖片上的 ♡ 即可收藏</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+              {favorites.map((fav) => (
+                <div key={fav.id} className="flex flex-col items-center gap-1">
+                  <div className="relative w-full aspect-square bg-[var(--card-bg)] rounded-lg overflow-hidden border border-[var(--border)] hover:border-[var(--accent-dim)] transition-colors">
+                    <img src={fav.imagePath} alt={fav.character} className="w-full h-full object-contain p-1" />
+                    <FavoriteButton image={fav} isFavorited={true} />
+                  </div>
+                  <span className="font-display text-xs text-[var(--muted)] truncate w-full text-center">
+                    {fav.character}
+                    {fav.calligrapherName && <span className="text-[var(--muted-dim)]"> · {fav.calligrapherName}</span>}
+                  </span>
                 </div>
-                <span className="font-display text-xs text-[var(--muted)] truncate w-full text-center">
-                  {fav.character}
-                  {fav.calligrapherName && <span className="text-[var(--muted-dim)]"> · {fav.calligrapherName}</span>}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "jizi" && (
+        <div>
+          {savedJizi.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-16 text-center">
+              <span className="font-display text-4xl text-[var(--border)]">集</span>
+              <p className="text-sm text-[var(--muted)]">尚未儲存任何集字作品</p>
+              <p className="text-xs text-[var(--muted-dim)]">在集字工坊點擊「儲存」即可存入</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {savedJizi.map((item) => (
+                <SavedJiziCard
+                  key={item.id}
+                  item={item}
+                  onLoad={() => {
+                    sessionStorage.setItem(JIZI_LOAD_KEY, JSON.stringify({
+                      text: item.text,
+                      style: item.style,
+                      calligraphers: item.calligraphers,
+                      works: item.works,
+                      orientation: item.orientation,
+                      gridSize: item.gridSize,
+                      gap: item.gap,
+                      paperId: item.paperId,
+                      composition: item.composition,
+                    }));
+                    router.push("/jizi");
+                  }}
+                  onDelete={() => deleteSavedJizi(user!.uid, item.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── saved jizi card ─────────────────────────────────────────────────────────
+
+function SavedJiziCard({
+  item,
+  onLoad,
+  onDelete,
+}: {
+  item: SavedJizi;
+  onLoad: () => void;
+  onDelete: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+
+  const handleDownload = () => {
+    if (!item.thumbnail) return;
+    const a = document.createElement("a");
+    a.href = item.thumbnail;
+    a.download = `jizi-${item.text}-${item.id.slice(0, 6)}.png`;
+    a.click();
+  };
+
+  return (
+    <div className="bg-[var(--card-bg)] border border-[var(--border)] rounded-xl overflow-hidden hover:border-[var(--accent-dim)] transition-colors">
+      {item.thumbnail && (
+        <div className="w-full bg-white border-b border-[var(--border)] max-h-56 overflow-hidden flex items-center justify-center">
+          <img
+            src={item.thumbnail}
+            alt={item.text}
+            className="w-full object-contain"
+          />
+        </div>
+      )}
+      <div className="flex items-center gap-3 p-3">
+        {!item.thumbnail && (
+          <div className="font-display text-2xl text-[var(--accent)] w-10 shrink-0 text-center leading-none">
+            {item.text.slice(0, 2)}
+            {item.text.length > 2 && <span className="text-[var(--muted-dim)]">…</span>}
           </div>
         )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-[var(--foreground)] truncate">{item.text}</p>
+          <p className="text-[10px] text-[var(--muted)] mt-0.5">
+            {STYLE_LABELS[item.style] ?? item.style}
+            {" · "}
+            {item.orientation === "vertical" ? "直排" : "橫排"}
+            {" · "}
+            格 {item.gridSize}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {item.thumbnail && (
+            <button
+              onClick={handleDownload}
+              aria-label="下載作品"
+              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+            >
+              下載
+            </button>
+          )}
+          <button
+            onClick={onLoad}
+            className="text-xs px-3 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--background)] font-bold hover:scale-105 transition-all"
+          >
+            編輯
+          </button>
+          {confirming ? (
+            <button
+              onClick={() => { onDelete(); setConfirming(false); }}
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white font-bold"
+            >
+              確認刪除
+            </button>
+          ) : (
+            <button
+              onClick={() => setConfirming(true)}
+              onBlur={() => setConfirming(false)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--muted)] hover:border-red-400 hover:text-red-400 transition-colors"
+            >
+              刪除
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

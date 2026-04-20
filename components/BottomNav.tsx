@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 
 const navItems = [
   {
@@ -50,6 +51,11 @@ const navItems = [
 
 export default function BottomNav() {
   const pathname = usePathname();
+  const { user } = useAuth();
+
+  const meLabel = user
+    ? (user.displayName?.split(" ")[0] ?? user.email?.split("@")[0] ?? "我的")
+    : "未登入";
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[var(--card-bg)] border-t border-[var(--border)]">
@@ -59,6 +65,8 @@ export default function BottomNav() {
             item.href === "/"
               ? pathname === "/" || pathname.startsWith("/character")
               : pathname.startsWith(item.href);
+
+          const label = item.href === "/me" ? meLabel : item.label;
 
           return (
             <Link
@@ -71,7 +79,7 @@ export default function BottomNav() {
               }`}
             >
               {item.icon}
-              <span className="font-display text-xs tracking-wider">{item.label}</span>
+              <span className="font-display text-xs tracking-wider max-w-[56px] truncate">{label}</span>
             </Link>
           );
         })}

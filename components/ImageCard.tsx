@@ -21,8 +21,11 @@ export default function ImageCard({
   isFavorited = false,
 }: ImageCardProps) {
   return (
-    <button
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onClick(); }}
       className="flex flex-col items-center gap-1 group cursor-pointer"
     >
       <div className="relative w-full aspect-square bg-[var(--card-bg)] rounded-lg overflow-hidden flex items-center justify-center border border-transparent group-hover:bg-[var(--card-hover)] group-hover:border-[var(--accent-dim)] transition-colors">
@@ -39,6 +42,6 @@ export default function ImageCard({
       <span className="font-display text-xs text-[var(--muted)] group-hover:text-[var(--accent)] truncate w-full text-center transition-colors">
         {calligrapherName || workName || ""}
       </span>
-    </button>
+    </div>
   );
 }

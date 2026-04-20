@@ -8,6 +8,7 @@ interface ImageModalProps {
   workName: string | null;
   styleName: string;
   onClose: () => void;
+  onZitie?: () => void;
 }
 
 export default function ImageModal({
@@ -16,6 +17,7 @@ export default function ImageModal({
   workName,
   styleName,
   onClose,
+  onZitie,
 }: ImageModalProps) {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -55,14 +57,24 @@ export default function ImageModal({
           />
         </div>
 
-        <div className="p-4 space-y-1">
-          {calligrapherName && (
-            <p className="text-[var(--foreground)] text-lg">{calligrapherName}</p>
+        <div className="p-4 flex items-end justify-between gap-4">
+          <div className="space-y-1 min-w-0">
+            {calligrapherName && (
+              <p className="text-[var(--foreground)] text-lg">{calligrapherName}</p>
+            )}
+            {workName && (
+              <p className="text-[var(--muted)] text-sm">{workName}</p>
+            )}
+            <p className="text-[var(--muted)] text-xs">{styleName}</p>
+          </div>
+          {onZitie && (
+            <button
+              onClick={onZitie}
+              className="shrink-0 border border-[var(--accent)] text-[var(--accent)] px-4 py-2 rounded-xl text-xs font-bold hover:bg-[var(--accent)] hover:text-[var(--background)] transition-all"
+            >
+              生成字帖
+            </button>
           )}
-          {workName && (
-            <p className="text-[var(--muted)] text-sm">{workName}</p>
-          )}
-          <p className="text-[var(--muted)] text-xs">{styleName}</p>
         </div>
       </div>
     </div>
