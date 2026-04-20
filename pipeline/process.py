@@ -192,7 +192,7 @@ def detect_with_paddle(img_color: np.ndarray) -> list[dict]:
     """
     try:
         from paddleocr import PaddleOCR
-        ocr = PaddleOCR(use_angle_cls=False, lang="ch", show_log=False)
+        ocr = PaddleOCR(use_textline_orientation=False, lang="ch")
         result = ocr.ocr(img_color, cls=False)
         boxes = []
         if result and result[0]:

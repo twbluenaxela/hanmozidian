@@ -32,13 +32,17 @@ interface BoxesData {
   shiwen: string[];
 }
 
-let boxIdCounter = 0;
-function makeId() { return `box-${++boxIdCounter}`; }
+let _idSeq = 0;
+function makeId() {
+  return `box-${Date.now()}-${++_idSeq}`;
+}
 
 function AnnotateInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const identifier = searchParams.get("id") || "";
+
+  const [renderScale, setRenderScale] = useState(1); // Ratio of screen size to natural image size
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [work, setWork] = useState<WorkData | null>(null);
@@ -56,6 +60,8 @@ function AnnotateInner() {
   const [saveMsg, setSaveMsg] = useState("");
   const [scale, setScale] = useState(1);
   const [zoom, setZoom] = useState(1);
+  const [processing, setProcessing] = useState(false);
+  const [processError, setProcessError] = useState<string | null>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -77,33 +83,52 @@ function AnnotateInner() {
           setShiwenInput(draft.shiwenChars?.join("") || work.shiwen || "");
           setImageSize(draft.imageSize || { w: 1, h: 1 });
         } else if (boxData) {
-          const mapped: Box[] = boxData.boxes.map((b, i) => ({
-            id: makeId(),
-            x: b.x, y: b.y, w: b.w, h: b.h,
-            confidence: b.confidence,
-            source: b.source as Box["source"],
-            char: boxData.shiwen[i] || "",
-          }));
-          setBoxes(mapped);
-          setShiwenChars(boxData.shiwen);
-          setShiwenInput(boxData.shiwen.join(""));
-          setImageSize(boxData.imageSize);
+          applyBoxData(boxData);
         } else {
           setShiwenInput(work.shiwen || "");
         }
       });
   }, [identifier]);
 
+  const applyBoxData = useCallback((boxData: BoxesData) => {
+    const mapped: Box[] = boxData.boxes.map((b, i) => ({
+      id: makeId(),
+      x: b.x, y: b.y, w: b.w, h: b.h,
+      confidence: b.confidence,
+      source: b.source as Box["source"],
+      char: boxData.shiwen[i] || "",
+    }));
+    setBoxes(mapped);
+    setShiwenChars(boxData.shiwen);
+    handleShiwenChange(boxData.shiwen.join(""));
+    setImageSize(boxData.imageSize);
+  }, []);
+
+  const runProcessing = useCallback(async () => {
+    if (!identifier) return;
+    setProcessing(true);
+    setProcessError(null);
+    try {
+      const res = await fetch(`/api/admin/npm/${encodeURIComponent(identifier)}/process`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "processing failed");
+      if (data.boxes) applyBoxData(data.boxes);
+    } catch (e: any) {
+      setProcessError(e.message);
+    } finally {
+      setProcessing(false);
+    }
+  }, [identifier, applyBoxData]);
+
   // Recompute scale when image loads or zoom changes
   const handleImageLoad = useCallback(() => {
-    if (!imgRef.current || imageSize.w === 1) return;
-    setScale((imgRef.current.clientWidth / imageSize.w) * zoom);
-  }, [imageSize.w, zoom]);
-
-  useEffect(() => {
-    window.addEventListener("resize", handleImageLoad);
-    return () => window.removeEventListener("resize", handleImageLoad);
-  }, [handleImageLoad]);
+    if (!imgRef.current) return;
+    // This is the "secret sauce" to fix stretching:
+    // We find how much the browser shrunk the image to fit your screen.
+    const naturalWidth = imgRef.current.naturalWidth;
+    const currentWidth = imgRef.current.clientWidth;
+    setRenderScale(currentWidth / naturalWidth);
+  }, []);
 
   // Recompute scale whenever zoom changes
   useEffect(() => {
@@ -124,6 +149,11 @@ function AnnotateInner() {
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
   }, []);
+
+  useEffect(() => {
+    window.addEventListener("resize", handleImageLoad);
+    return () => window.removeEventListener("resize", handleImageLoad);
+  }, [handleImageLoad]);
 
   // Apply 釋文 to boxes in order
   const applyShiwen = useCallback((chars: string[]) => {
@@ -167,14 +197,18 @@ function AnnotateInner() {
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (!drawMode || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    setDrawing({ x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale });
+    // Divide by both zoom (CSS) and renderScale (Image shrinkage)
+    setDrawing({ 
+      x: (e.clientX - rect.left) / (zoom * renderScale), 
+      y: (e.clientY - rect.top) / (zoom * renderScale) 
+    });
   };
 
   const handleCanvasMouseUp = (e: React.MouseEvent) => {
     if (!drawing || !canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    const x2 = (e.clientX - rect.left) / scale;
-    const y2 = (e.clientY - rect.top) / scale;
+    const x2 = (e.clientX - rect.left) / (zoom * renderScale);
+    const y2 = (e.clientY - rect.top) / (zoom * renderScale);
     const newBox: Box = {
       id: makeId(),
       x: Math.min(drawing.x, x2),
@@ -205,21 +239,27 @@ function AnnotateInner() {
     if (!work) return;
     setSaving(true);
     const draft = { boxes, shiwenChars, imageSize };
-    await fetch("/api/admin/npm", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        identifier: work.identifier,
-        status,
-        annotationDraft: JSON.stringify(draft),
-        shiwen: shiwenInput,
-        calligrapher: calligrapherInput,
-        styleSlug: styleInput,
-      }),
-    });
-    setSaving(false);
-    setSaveMsg(status === "done" ? "✓ 完成並儲存" : "✓ 草稿已儲存");
-    setTimeout(() => setSaveMsg(""), 2000);
+    try {
+      await fetch("/api/admin/npm", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          identifier: work.identifier,
+          status,
+          annotationDraft: JSON.stringify(draft),
+          shiwen: shiwenInput,
+          calligrapher: calligrapherInput,
+          styleSlug: styleInput,
+        }),
+      });
+      setWork(prev => prev ? ({ ...prev, status }) : null);
+      setSaveMsg(status === "done" ? "✓ 完成並儲存" : "✓ 草稿已儲存");
+    } catch {
+      setSaveMsg("⚠ 儲存失敗");
+    } finally {
+      setSaving(false);
+      setTimeout(() => setSaveMsg(""), 3000);
+    }
   }, [work, boxes, shiwenChars, imageSize, shiwenInput, calligrapherInput, styleInput]);
 
   // Auto-save draft every 30 seconds
@@ -241,7 +281,7 @@ function AnnotateInner() {
 
       {/* Header */}
       <div className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] bg-[var(--card-bg)]">
-        <button onClick={() => { saveDraft("annotating"); router.push("/admin"); }}
+        <button onClick={() => { saveDraft(work.status === "done" ? "done" : "annotating"); router.push("/admin"); }}
           className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors text-sm">
           ←
         </button>
@@ -309,7 +349,15 @@ function AnnotateInner() {
               placeholder="貼上釋文..."
               className="w-full bg-[var(--card-bg)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[var(--accent)] resize-none font-display"
             />
-            <p className="text-xs text-[var(--muted)] mt-1">{shiwenChars.length} 字</p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-[var(--muted)]">{shiwenChars.length} 字</p>
+              <button
+                onClick={() => handleShiwenChange(shiwenInput + "□")}
+                className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] border border-[var(--border)] rounded px-1.5 py-0.5 font-display transition-colors"
+                title="插入缺字佔位符 □ (U+25A1)">
+                + □
+              </button>
+            </div>
           </div>
 
           {/* Stats */}
@@ -339,6 +387,15 @@ function AnnotateInner() {
                 }`}>
                 {drawMode ? "繪製模式 ✓" : "繪製新框"}
               </button>
+              <button
+                onClick={runProcessing}
+                disabled={processing}
+                className="w-full py-2 rounded-lg border border-[var(--border)] text-xs font-bold transition-colors disabled:opacity-40">
+                {processing ? "偵測中..." : "偵測字框"}
+              </button>
+              {processError && (
+                <p className="text-xs text-red-400 text-center">{processError}</p>
+              )}
               {selectedBox && (
                 <button onClick={() => deleteBox(selectedBox.id)}
                   className="w-full py-2 rounded-lg border border-red-400 text-red-400 text-xs font-bold hover:bg-red-400 hover:text-[var(--background)] transition-colors">
@@ -363,17 +420,26 @@ function AnnotateInner() {
         <div ref={viewportRef} className="flex-1 overflow-auto p-4 bg-[var(--background)]">
           <div
             ref={canvasRef}
-            className={`relative inline-block select-none origin-top-left ${drawMode ? "cursor-crosshair" : "cursor-default"}`}
-            style={{ transform: `scale(${zoom})`, transformOrigin: "top left" }}
+            className={`relative inline-block select-none ${drawMode ? "cursor-crosshair" : "cursor-default"}`}
+            style={{ 
+              transform: `scale(${zoom})`, 
+              transformOrigin: "top left",
+              maxWidth: "100%", // This prevents it from being "super huge"
+              maxHeight: "80vh" // Optional: keeps it on screen
+            }}
             onMouseDown={handleCanvasMouseDown}
             onMouseUp={handleCanvasMouseUp}
           >
             <img
               ref={imgRef}
               src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean`}
+              style={{ 
+                display: "block", 
+                maxWidth: "100%", // The image will not exceed the container
+                height: "auto"    // This maintains aspect ratio
+              }}
               alt={work.name}
               className="block"
-              style={{ maxHeight: zoom <= 1 ? "calc(100dvh - 120px)" : "none", maxWidth: zoom <= 1 ? "100%" : "none" }}
               onLoad={handleImageLoad}
               draggable={false}
             />
@@ -388,10 +454,10 @@ function AnnotateInner() {
                   onMouseDown={(e) => handleBoxMouseDown(e, box.id)}
                   style={{
                     position: "absolute",
-                    left: box.x * scale,
-                    top: box.y * scale,
-                    width: box.w * scale,
-                    height: box.h * scale,
+                    left: box.x,
+                    top: box.y ,
+                    width: box.w,
+                    height: box.h ,
                     border: `2px solid ${isSelected ? "#e5b84a" : isLowConf ? "#f97316" : "#22c55e"}`,
                     boxSizing: "border-box",
                     cursor: drawMode ? "crosshair" : "move",
