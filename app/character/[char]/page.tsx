@@ -4,9 +4,9 @@ import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import SearchBar from "@/components/SearchBar";
 import StyleTabs from "@/components/StyleTabs";
-import SubFilter from "@/components/SubFilter";
 import ImageGrid from "@/components/ImageGrid";
 import ImageModal from "@/components/ImageModal";
+import JiziPicker from "@/components/JiziPicker";
 
 interface StyleCount {
   slug: string;
@@ -26,12 +26,6 @@ interface ImageData {
   styleSlug: string;
 }
 
-interface Calligrapher {
-  id: number;
-  nameZh: string;
-  dynasty: string | null;
-}
-
 export default function CharacterPage({
   params,
 }: {
@@ -44,13 +38,13 @@ export default function CharacterPage({
   const [styleCounts, setStyleCounts] = useState<StyleCount[]>([]);
   const [activeStyle, setActiveStyle] = useState<string | null>(null);
   const [images, setImages] = useState<ImageData[]>([]);
-  const [calligraphers, setCalligraphers] = useState<Calligrapher[]>([]);
-  const [selectedCalligrapher, setSelectedCalligrapher] = useState<number | null>(null);
-  const [filterMode, setFilterMode] = useState<"author" | "work">("author");
+  const [selectedCalligraphers, setSelectedCalligraphers] = useState<number[]>([]);
+  const [selectedWorks, setSelectedWorks] = useState<number[]>([]);
   const [selectedImage, setSelectedImage] = useState<ImageData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Fetch style counts and initial images
+  // Fetch style counts on character change
   useEffect(() => {
     setLoading(true);
     fetch(`/api/character/${encodeURIComponent(char)}/images`)
@@ -63,7 +57,6 @@ export default function CharacterPage({
           return;
         }
         setStyleCounts(data.styleCounts || []);
-        // Set default active style to first available
         const firstStyle = (data.styleCounts || [])[0];
         if (firstStyle) {
           setActiveStyle(firstStyle.slug);
@@ -76,13 +69,16 @@ export default function CharacterPage({
       .catch(() => setLoading(false));
   }, [char]);
 
-  // Fetch images when style or filter changes
+  // Fetch images when style or filters change
   useEffect(() => {
     if (!activeStyle) return;
     setLoading(true);
     const params = new URLSearchParams({ style: activeStyle });
-    if (selectedCalligrapher) {
-      params.set("calligrapher", String(selectedCalligrapher));
+    if (selectedCalligraphers.length > 0) {
+      params.set("calligrapher", selectedCalligraphers.join(","));
+    }
+    if (selectedWorks.length > 0) {
+      params.set("work", selectedWorks.join(","));
     }
     fetch(`/api/character/${encodeURIComponent(char)}/images?${params}`)
       .then((r) => r.json())
@@ -91,74 +87,161 @@ export default function CharacterPage({
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [char, activeStyle, selectedCalligrapher]);
-
-  // Fetch calligraphers for filter
-  useEffect(() => {
-    if (!activeStyle) return;
-    const params = new URLSearchParams({ character: char, style: activeStyle });
-    fetch(`/api/calligraphers?${params}`)
-      .then((r) => r.json())
-      .then((data) => setCalligraphers(data.calligraphers || []));
-  }, [char, activeStyle]);
+  }, [char, activeStyle, selectedCalligraphers, selectedWorks]);
 
   const handleSearch = (query: string) => {
     const firstChar = [...query][0];
     if (firstChar && firstChar !== char) {
-      setSelectedCalligrapher(null);
+      setSelectedCalligraphers([]);
+      setSelectedWorks([]);
       router.push(`/character/${encodeURIComponent(firstChar)}`);
     }
   };
 
+  const handleStyleChange = (slug: string) => {
+    setActiveStyle(slug);
+    setSelectedCalligraphers([]);
+    setSelectedWorks([]);
+  };
+
+  const hasFilters = selectedCalligraphers.length > 0 || selectedWorks.length > 0;
+
   return (
-    <div className="min-h-full">
-      {/* Top search bar */}
-      <div className="sticky top-0 z-30 bg-[var(--background)] border-b border-[var(--border)] px-4 py-3">
-        <div className="flex items-center gap-2 max-w-2xl mx-auto">
-          <button
-            onClick={() => router.push("/")}
-            className="font-display px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--accent-bright)] transition-colors"
-          >
-            首頁
-          </button>
-          <div className="flex-1">
-            <SearchBar onSearch={handleSearch} initialValue={char} />
+    <div className="h-[100dvh] w-full overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+      {/* MAIN AREA — always full width; sidebar floats over it */}
+      <div className="flex flex-col h-full">
+        {/* Top search bar */}
+        <div className="shrink-0 z-30 bg-[var(--background)] border-b border-[var(--border)] px-4 py-3">
+          <div className="flex items-center gap-2 max-w-2xl mx-auto">
+            <button
+              onClick={() => router.push("/")}
+              className="font-display px-3 py-2 text-sm text-[var(--muted)] hover:text-[var(--accent-bright)] transition-colors shrink-0"
+            >
+              首頁
+            </button>
+            <div className="flex-1 min-w-0">
+              <SearchBar onSearch={handleSearch} initialValue={char} />
+            </div>
+          </div>
+        </div>
+
+        {/* Style tabs */}
+        <div className="shrink-0">
+          <div className="max-w-2xl mx-auto">
+            <StyleTabs
+              styles={styleCounts}
+              activeStyle={activeStyle}
+              onStyleChange={handleStyleChange}
+            />
+          </div>
+        </div>
+
+        {/* Scrollable image area */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto pb-20">
+            {loading ? (
+              <div className="flex items-center justify-center h-48 text-[var(--muted)]">
+                載入中...
+              </div>
+            ) : (
+              <ImageGrid
+                images={images}
+                onImageClick={(img) => setSelectedImage(img)}
+              />
+            )}
           </div>
         </div>
       </div>
 
-      {/* Style tabs */}
-      <div className="max-w-2xl mx-auto">
-        <StyleTabs
-          styles={styleCounts}
-          activeStyle={activeStyle}
-          onStyleChange={(slug) => {
-            setActiveStyle(slug);
-            setSelectedCalligrapher(null);
-          }}
+      {/* BACKDROP — tap outside to close on mobile */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/20"
+          onClick={() => setPickerOpen(false)}
         />
+      )}
 
-        {/* Sub-filter bar */}
-        <SubFilter
-          filterMode={filterMode}
-          onFilterModeChange={setFilterMode}
-          calligraphers={calligraphers}
-          selectedCalligrapher={selectedCalligrapher}
-          onCalligrapherChange={setSelectedCalligrapher}
-        />
-
-        {/* Image grid */}
-        {loading ? (
-          <div className="flex items-center justify-center h-48 text-[var(--muted)]">
-            載入中...
+      {/* SIDEBAR TOGGLE HANDLE */}
+      {!pickerOpen && (
+        <button
+          onClick={() => setPickerOpen(true)}
+          className="fixed right-0 top-1/2 -translate-y-1/2 bg-[var(--card-bg)] border border-[var(--border)] border-r-0 p-2 pl-3 rounded-l-xl z-40 hover:bg-[var(--accent)] hover:text-[var(--background)] transition-all group"
+        >
+          <div className="flex flex-col items-center gap-1">
+            <span className="text-xl">«</span>
+            <span className="text-[10px] [writing-mode:vertical-lr] font-bold tracking-widest">
+              篩選
+            </span>
+            {hasFilters && (
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent)] group-hover:bg-[var(--background)]" />
+            )}
           </div>
-        ) : (
-          <ImageGrid
-            images={images}
-            onImageClick={(img) => setSelectedImage(img)}
-          />
-        )}
-      </div>
+        </button>
+      )}
+
+      {/* SIDEBAR — always fixed overlay, never pushes content */}
+      <aside
+        className={`
+          fixed right-0 inset-y-0 z-50
+          bg-[var(--background)] border-l border-[var(--border)]
+          flex flex-col
+          transition-transform duration-300 ease-in-out
+          w-[85vw] sm:w-80 md:w-[340px]
+          ${pickerOpen ? "translate-x-0" : "translate-x-full"}
+        `}
+      >
+        {/* Sidebar header */}
+        <div className="shrink-0 px-5 py-4 border-b border-[var(--border)] bg-[var(--card-bg)] flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-base">篩選</h2>
+            <p className="text-[10px] text-[var(--muted)] mt-0.5 font-display">
+              {char} · {styleCounts.find((s) => s.slug === activeStyle)?.nameZh ?? ""}
+              {hasFilters && (
+                <span className="ml-2 text-[var(--accent)]">
+                  {selectedCalligraphers.length + selectedWorks.length} 已選
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setPickerOpen(false)}
+            className="w-8 h-8 rounded-full bg-[var(--background)] border border-[var(--border)] flex items-center justify-center text-base hover:border-[var(--accent)] transition-colors"
+          >
+            »
+          </button>
+        </div>
+
+        {/* Picker content */}
+        <div className="flex-1 overflow-y-auto p-4 md:p-5">
+          {activeStyle ? (
+            <JiziPicker
+              text={char}
+              style={activeStyle}
+              open={pickerOpen}
+              selectedCalligraphers={selectedCalligraphers}
+              selectedWorks={selectedWorks}
+              onToggleCalligrapher={(id) =>
+                setSelectedCalligraphers((p) =>
+                  p.includes(id) ? p.filter((x) => x !== id) : [...p, id]
+                )
+              }
+              onToggleWork={(id) =>
+                setSelectedWorks((p) =>
+                  p.includes(id) ? p.filter((x) => x !== id) : [...p, id]
+                )
+              }
+              onReset={() => {
+                setSelectedCalligraphers([]);
+                setSelectedWorks([]);
+              }}
+            />
+          ) : (
+            <p className="text-sm text-[var(--muted)] text-center py-10">
+              請先選擇書體
+            </p>
+          )}
+        </div>
+      </aside>
 
       {/* Lightbox modal */}
       {selectedImage && (

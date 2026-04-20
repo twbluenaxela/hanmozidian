@@ -21,6 +21,7 @@ DB = "data/shufazidian.db"
 # ── Entries to NULL out (not real people) ────────────────────────────────────
 # id → name (for logging)
 NULL_IDS: dict[int, str] = {
+    78:  "(傳)",                 # bare "attributed to" tag — not a name
     344: "出師頌",               # work title, not a person
     72:  "古文四聲韻",            # Song dynasty character reference
     214: "古文磚",               # brick inscription rubbings

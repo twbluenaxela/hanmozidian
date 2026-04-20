@@ -20,7 +20,14 @@
       "Bash(wsl -e bash -c \"cd /home/redna/shufazidian && python3 -c \\\\\"import sqlite3; conn=sqlite3.connect\\('data/shufazidian.db'\\); print\\(conn.execute\\(\\\\\\\\\\\\\"SELECT sql FROM sqlite_master WHERE name='calligraphy_images'\\\\\\\\\\\\\"\\).fetchone\\(\\)[0]\\)\\\\\"\")",
       "Bash(wsl -e bash -c \"cd /home/redna/shufazidian && python3 scripts/generate_gallery.py --limit 200 --out public/gallery.html 2>&1\")",
       "Bash(wsl -e bash -c \"cd /home/redna/shufazidian && wc -c public/gallery.html && echo bytes\")",
-      "Bash(wsl -e *)"
+      "Bash(wsl -e *)",
+      "Bash(wsl find *)",
+      "Bash(wsl.exe -e bash -c \"find /home/redna/shufazidian/app/api -name 'route.ts' | sort\")",
+      "Bash(wsl.exe -e bash -c \"grep -n 'getJiziCoverage\\\\|getCharacterByChar' /home/redna/shufazidian/lib/db/queries.ts | head -30\")",
+      "Bash(wsl.exe -e bash -c \"sqlite3 /home/redna/shufazidian/data/shufazidian.db \\\\\"SELECT id, name_zh FROM calligraphers WHERE name_zh LIKE '\\(%' OR name_zh LIKE '%傳%' ORDER BY id;\\\\\"\")",
+      "Bash(wsl.exe -e bash -c \"sqlite3 /home/redna/shufazidian/data/shufazidian.db \\\\\"UPDATE calligraphy_images SET calligrapher_id=NULL WHERE calligrapher_id=78; DELETE FROM calligraphers WHERE id=78; SELECT changes\\(\\);\\\\\"\")",
+      "Bash(wsl.exe -e bash -c \"mkdir -p /home/redna/shufazidian/app/api/browse && mkdir -p /home/redna/shufazidian/app/browse\")",
+      "Bash(wsl.exe -e bash -c \"grep -n '集字\\\\|jizi\\\\|href\\\\|Link\\\\|router' /home/redna/shufazidian/app/page.tsx | head -20\")"
     ]
   }
 }

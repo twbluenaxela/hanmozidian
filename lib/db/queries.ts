@@ -6,7 +6,7 @@ import {
   works,
   calligraphyImages,
 } from "./schema";
-import { eq, and, sql, count, inArray } from "drizzle-orm";
+import { eq, and, sql, count, inArray, desc } from "drizzle-orm";
 
 export function searchCharacters(query: string) {
   return db
@@ -285,6 +285,105 @@ export function getJiziCoverage(opts: {
       id: r.id,
       nameZh: r.nameZh,
       calligrapherName: r.calligrapherName,
+      imageCount: Number(r.imageCount),
+    })),
+  };
+}
+
+/**
+ * Browse/gallery query — returns paginated images across ALL characters,
+ * optionally filtered by calligrapher(s) or work(s). Includes the character
+ * glyph so each image card can display what character it shows.
+ */
+export function getWorkNameById(workId: number): string | null {
+  const row = db
+    .select({ nameZh: works.nameZh })
+    .from(works)
+    .where(eq(works.id, workId))
+    .get();
+  return row?.nameZh ?? null;
+}
+
+export function getGalleryImages(opts: {
+  calligrapherIds?: number[];
+  workIds?: number[];
+  page?: number;
+  limit?: number;
+  /** Pass true to fetch all rows with no pagination (for text-order sorting) */
+  all?: boolean;
+}) {
+  const { calligrapherIds, workIds, page = 1, limit = 20, all = false } = opts;
+  const offset = all ? 0 : (page - 1) * limit;
+
+  const conditions = [];
+  if (calligrapherIds && calligrapherIds.length > 0) {
+    conditions.push(inArray(calligraphyImages.calligrapherId, calligrapherIds));
+  }
+  if (workIds && workIds.length > 0) {
+    conditions.push(inArray(calligraphyImages.workId, workIds));
+  }
+
+  return db
+    .select({
+      id: calligraphyImages.id,
+      imagePath: calligraphyImages.imagePath,
+      character: characters.character,
+      calligrapherName: calligraphers.nameZh,
+      calligrapherId: calligraphyImages.calligrapherId,
+      workName: works.nameZh,
+      workId: calligraphyImages.workId,
+      styleName: scriptStyles.nameZh,
+      styleSlug: scriptStyles.slug,
+    })
+    .from(calligraphyImages)
+    .innerJoin(characters, eq(calligraphyImages.characterId, characters.id))
+    .leftJoin(calligraphers, eq(calligraphyImages.calligrapherId, calligraphers.id))
+    .leftJoin(works, eq(calligraphyImages.workId, works.id))
+    .innerJoin(scriptStyles, eq(calligraphyImages.styleId, scriptStyles.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(calligraphyImages.id)
+    .limit(all ? 100_000 : limit)
+    .offset(offset)
+    .all();
+}
+
+/**
+ * Returns all calligraphers and works with total image counts for the
+ * browse sidebar — no character filter, just global totals.
+ */
+export function getBrowseFilters() {
+  const calligrapherRows = db
+    .select({
+      id: calligraphers.id,
+      nameZh: calligraphers.nameZh,
+      dynasty: calligraphers.dynasty,
+      imageCount: count(calligraphyImages.id),
+    })
+    .from(calligraphers)
+    .innerJoin(calligraphyImages, eq(calligraphyImages.calligrapherId, calligraphers.id))
+    .groupBy(calligraphers.id)
+    .orderBy(desc(count(calligraphyImages.id)))
+    .all();
+
+  const workRows = db
+    .select({
+      id: works.id,
+      nameZh: works.nameZh,
+      imageCount: count(calligraphyImages.id),
+    })
+    .from(works)
+    .innerJoin(calligraphyImages, eq(calligraphyImages.workId, works.id))
+    .groupBy(works.id)
+    .orderBy(desc(count(calligraphyImages.id)))
+    .all();
+
+  return {
+    calligraphers: calligrapherRows.map((r) => ({
+      ...r,
+      imageCount: Number(r.imageCount),
+    })),
+    works: workRows.map((r) => ({
+      ...r,
       imageCount: Number(r.imageCount),
     })),
   };

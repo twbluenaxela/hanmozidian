@@ -32,7 +32,22 @@ export default function HomePage() {
 
         <SearchBar onSearch={handleSearch} placeholder="輸入一個漢字..." />
 
-        <div className="mt-12">
+        <div className="mt-8 flex justify-center gap-3">
+          <button
+            onClick={() => router.push("/browse")}
+            className="font-display px-5 py-2.5 rounded-xl bg-[var(--card-bg)] border border-[var(--border)] text-sm text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+          >
+            瀏覽字帖
+          </button>
+          <button
+            onClick={() => router.push("/jizi")}
+            className="font-display px-5 py-2.5 rounded-xl bg-[var(--card-bg)] border border-[var(--border)] text-sm text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+          >
+            集字工坊
+          </button>
+        </div>
+
+        <div className="mt-10">
           <p className="font-display text-xs text-[var(--muted)] tracking-[0.3em] mb-4 text-center uppercase">
             熱 門 字
           </p>
