@@ -24,6 +24,7 @@ jest.mock("@/lib/firebase", () => ({ db: {} }));
 const image = {
   id: 42,
   imagePath: "/img/test.jpg",
+  imageUrl: "https://cdn.example.com/img/test.jpg",
   character: "永",
   styleSlug: "kai",
   calligrapherName: "王羲之",
@@ -125,7 +126,7 @@ describe("useFavorites hook", () => {
     const { renderHook } = await import("@testing-library/react");
     const { useFavorites } = await import("@/lib/favorites");
     const { result, rerender } = renderHook(({ uid }: { uid: string | null }) => useFavorites(uid), {
-      initialProps: { uid: "uid1" },
+      initialProps: { uid: "uid1" as string | null },
     });
     rerender({ uid: null });
     expect(result.current).toEqual([]);

@@ -24,7 +24,7 @@ jest.mock("@/lib/auth-context", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-const image = { id: 1, imagePath: "/img.png", character: "永", styleSlug: "kaishu", calligrapherName: "顏真卿" };
+const image = { id: 1, imagePath: "/img.png", imageUrl: "https://cdn.example.com/img.png", character: "永", styleSlug: "kaishu", calligrapherName: "顏真卿" };
 
 beforeEach(() => jest.clearAllMocks());
 
