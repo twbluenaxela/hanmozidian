@@ -119,16 +119,49 @@ STYLE_LABEL_TO_SLUG = {
 # author name" when a row has only one of the two fields. Any of these
 # suffix characters implies a work title. Ported directly from the
 # user's standalone scraper.
-WORK_SUFFIX_CHARS = frozenset("碑帖序經銘誌卷書簡文盟版石鼎記賦表賜")
+WORK_SUFFIX_CHARS = frozenset("碑帖序經銘誌卷簡牘文盟版石鼎記賦表賜")
+
+# These suffixes also indicate a title/compilation, but only when the string
+# is 4+ characters long — short names like 陳鑑 (2 chars), 虞集 (2 chars),
+# 梁同書 (3 chars) end in these characters yet are real people.
+_WORK_SUFFIX_CHARS_LONG = frozenset("書韻海釋續叢輯選彙錄編纂訂鑑要")
+
 _WORK_SUFFIX_EXTRAS = ("字典",)  # 2-char suffixes
+
+# Substrings that indicate a reference work or compilation, never a person.
+# 古文 confirmed by user: anything with 古文 is a reference, not a calligrapher.
+_REFERENCE_KEYWORDS = frozenset([
+    "古文",       # ancient character reference (古文四聲韻, 集古文韻, 魏石經古文彙編, …)
+    "集篆",       # seal-script compilation
+    "集古",       # ancient character compilation
+    "字海", "韻海", "韻府",
+    "四聲",
+    "隸釋", "隸續",
+    "說文",       # 說文解字
+    "字彙", "玉篇", "廣韻",
+    "石經",       # 石經 rubbings / compilations
+    "磚文",       # brick inscriptions
+    "彙編", "合編",  # compiled collections
+    "集字",       # character collections (e.g. 集王羲之書)
+    "簡牘",       # bamboo/wooden slip documents (archaeological sources)
+])
 
 def looks_like_work(text: str) -> bool:
     if not text:
         return False
-    return (
-        text.endswith(_WORK_SUFFIX_EXTRAS)
-        or (len(text) > 0 and text[-1] in WORK_SUFFIX_CHARS)
-    )
+    # Standard single-char work suffixes (always apply)
+    if text[-1] in WORK_SUFFIX_CHARS:
+        return True
+    # Multi-word suffix hints (字典, etc.)
+    if text.endswith(_WORK_SUFFIX_EXTRAS):
+        return True
+    # Long-name suffixes: only apply when name is 4+ chars (guards 陳鑑, 虞集, …)
+    if len(text) >= 4 and text[-1] in _WORK_SUFFIX_CHARS_LONG:
+        return True
+    # Reference-work keywords anywhere in the string
+    if any(kw in text for kw in _REFERENCE_KEYWORDS):
+        return True
+    return False
 
 # Time period labels that appear in 金文 rows (e.g. 西周早期, 春秋, 戰國).
 # These are not calligrapher names or work titles — rows using them as the
@@ -212,15 +245,14 @@ def get_or_create_work(
 ) -> Optional[int]:
     if not name_zh or name_zh == "Unknown":
         return None
-    cursor.execute("SELECT id FROM works WHERE name_zh = ?", (name_zh,))
-    row = cursor.fetchone()
-    if row:
-        return row[0]
+    # INSERT OR IGNORE + SELECT is race-safe: if another row was committed
+    # between our SELECT and INSERT we simply get the existing id back.
     cursor.execute(
-        "INSERT INTO works (name_zh, calligrapher_id, style_id) VALUES (?, ?, ?)",
+        "INSERT OR IGNORE INTO works (name_zh, calligrapher_id, style_id) VALUES (?, ?, ?)",
         (name_zh, calligrapher_id, style_id),
     )
-    return cursor.lastrowid # type: ignore[return-value]
+    cursor.execute("SELECT id FROM works WHERE name_zh = ?", (name_zh,))
+    return cursor.fetchone()[0]
 
 # --------- zi.tools API ---------
 
@@ -295,9 +327,19 @@ def extract_author_and_source(row: list) -> tuple[str, str]:
     eight = safe(8)
 
     if eight:
-        # row[7] = calligrapher, row[8] = work
-        author = seven or "Unknown"
-        work = eight
+        # row[7] = calligrapher, row[8] = work — but still guard against
+        # period labels (e.g. 西周早期) appearing in the calligrapher slot.
+        if not seven or looks_like_period(seven) or looks_like_work(seven):
+            author = "Unknown"
+        else:
+            author = seven
+        # Guard: if eight == seven, zi.tools repeated the calligrapher name
+        # in the work field — treat work as Unknown rather than storing a
+        # calligrapher name as a work title.
+        if eight == seven or looks_like_period(eight) or not looks_like_work(eight) and len(eight) <= 3:
+            work = "Unknown"
+        else:
+            work = eight
     elif seven:
         if looks_like_work(seven):
             work = seven

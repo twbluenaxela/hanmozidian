@@ -32,6 +32,8 @@ from scrape_corpus import extract_global_chars
 from scrape_zi_tools import (
     _is_cjk,
     extract_author_and_source,
+    looks_like_work,
+    looks_like_period,
     parse_row,
     unique_cjk_chars,
 )
@@ -380,6 +382,163 @@ class TestParseRowEdgeCases(unittest.TestCase):
         result = parse_row(self._row(seven="  顏真卿  "))
         self.assertIsNotNone(result)
         self.assertEqual(result["author"], "顏真卿")
+
+
+# ---------------------------------------------------------------------------
+# Regression tests — real misclassifications caught in production data
+#
+# Each test documents a specific category of bad data that slipped through
+# and was manually fixed. If any of these fail after a code change, that
+# change has re-opened a known bug.
+# ---------------------------------------------------------------------------
+
+class TestLooksLikeWorkRegressions(unittest.TestCase):
+    """
+    Reference works and compilations that zi.tools attributes to characters
+    but which are NOT calligrapher names.  Every entry here was found in the
+    calligraphers table in production and had to be cleaned up.
+    """
+
+    # ── 古文 keyword (user rule: anything with 古文 is a reference) ───────────
+    def test_guwen_keyword_caught(self):
+        for title in ["古文四聲韻", "集古文韻上聲韻第三", "魏石經古文彙編"]:
+            with self.subTest(title=title):
+                self.assertTrue(looks_like_work(title))
+
+    # ── 集篆 / 集古 keyword ───────────────────────────────────────────────────
+    def test_jizuan_jiju_caught(self):
+        self.assertTrue(looks_like_work("集篆古文韻海"))
+        self.assertTrue(looks_like_work("集古文韻"))
+
+    # ── 說文 keyword ──────────────────────────────────────────────────────────
+    def test_shuowen_caught(self):
+        self.assertTrue(looks_like_work("說文解字"))
+
+    # ── 隸釋 / 隸續 keyword ───────────────────────────────────────────────────
+    def test_lishu_lishu_caught(self):
+        self.assertTrue(looks_like_work("隸釋 隸續"))
+        self.assertTrue(looks_like_work("隸釋"))
+
+    # ── 簡牘 keyword ──────────────────────────────────────────────────────────
+    def test_jiandu_keyword_caught(self):
+        for title in ["睡虎地簡牘", "樓蘭簡牘", "居延簡牘"]:
+            with self.subTest(title=title):
+                self.assertTrue(looks_like_work(title))
+
+    # ── 牘 suffix (added to WORK_SUFFIX_CHARS) ───────────────────────────────
+    def test_du_suffix_caught(self):
+        self.assertTrue(looks_like_work("木牘"))
+        self.assertTrue(looks_like_work("封牘"))
+
+    # ── Long-name suffixes (≥4 chars guards against 陳鑑, 虞集, 梁同書) ──────
+    def test_long_suffix_applies_only_at_4_plus_chars(self):
+        """陳鑑 (2 chars ending in 鑑) must NOT be caught."""
+        self.assertFalse(looks_like_work("陳鑑"))
+
+    def test_shu_suffix_length_gated(self):
+        """梁同書 ends in 書 but is only 3 chars — a real calligrapher name, not a work."""
+        self.assertFalse(looks_like_work("梁同書"))
+
+    def test_shu_suffix_caught_at_four_chars(self):
+        """A 4+ char title ending in 書 IS a work (e.g. 集王羲之書)."""
+        self.assertTrue(looks_like_work("集王羲之書"))
+
+    def test_虞集_not_caught(self):
+        """虞集 ends in 集 but is only 2 chars — must stay as a calligrapher name."""
+        self.assertFalse(looks_like_work("虞集"))
+
+    def test_李鶴錄_not_caught(self):
+        """李鶴錄 ends in 錄 but is a confirmed real person (3 chars)."""
+        self.assertFalse(looks_like_work("李鶴錄"))
+
+    def test_four_char_lu_suffix_caught(self):
+        """A 4+ char title ending in 錄 IS a reference work."""
+        self.assertTrue(looks_like_work("書法叢錄"))
+        self.assertTrue(looks_like_work("金石萃編錄"))
+
+    def test_four_char_bian_suffix_caught(self):
+        self.assertTrue(looks_like_work("尚書文字合編"))
+        self.assertTrue(looks_like_work("彙編"))    # 2 chars — not caught by length gate
+        # ↑ 彙編 IS caught because 彙 is in _REFERENCE_KEYWORDS via 彙編 keyword
+        self.assertTrue(looks_like_work("金石彙編"))
+
+
+class TestExtractAuthorSourceRegressions(unittest.TestCase):
+    """
+    Real attribution patterns from zi.tools that caused bad DB entries.
+    """
+
+    def _row(self, seven="", eight=""):
+        r = [""] * 9
+        r[7] = seven
+        r[8] = eight
+        return r
+
+    # ── Period label in row[7] when row[8] is also present ───────────────────
+    def test_period_in_seven_with_eight_present(self):
+        """
+        zi.tools sometimes puts 西周早期 in row[7] (calligrapher slot) even
+        when row[8] has a work title.  The period must be caught and author
+        set to Unknown regardless.
+        """
+        author, work = extract_author_and_source(self._row("西周早期", "毛公鼎"))
+        self.assertEqual(author, "Unknown")
+
+    def test_all_period_variants_blocked_when_eight_present(self):
+        for period in ["商", "戰國", "西周中期", "商或西周早期", "西周晚期"]:
+            with self.subTest(period=period):
+                author, work = extract_author_and_source(self._row(period, "某碑"))
+                self.assertEqual(author, "Unknown",
+                    f"Period label {period!r} slipped through as author")
+
+    # ── row[8] == row[7] (calligrapher name repeated as work) ────────────────
+    def test_repeated_calligrapher_name_in_eight_gives_unknown_work(self):
+        """
+        zi.tools sometimes puts the calligrapher name in both row[7] and row[8].
+        The repeated name must not become a work title.
+        Use 顏真卿 (ends in 卿, not a work suffix) to isolate the row[8]==row[7] guard.
+        """
+        author, work = extract_author_and_source(self._row("顏真卿", "顏真卿"))
+        self.assertEqual(author, "顏真卿")
+        self.assertEqual(work, "Unknown")
+
+    def test_repeated_name_various_calligraphers(self):
+        for name in ["黎簡", "禹之鼎", "趙秉文", "翟汝文"]:
+            with self.subTest(name=name):
+                author, work = extract_author_and_source(self._row(name, name))
+                self.assertEqual(work, "Unknown",
+                    f"Repeated calligrapher name {name!r} stored as work title")
+
+    # ── Short non-work string in row[8] ──────────────────────────────────────
+    def test_short_non_work_string_in_eight_gives_unknown_work(self):
+        """
+        A ≤3-char string in row[8] that doesn't end in a work suffix is likely
+        a calligrapher name or category label, not a work title.
+        """
+        author, work = extract_author_and_source(self._row("歐陽詢", "歐陽詢"))
+        self.assertEqual(work, "Unknown")
+
+    def test_legitimate_short_work_title_preserved(self):
+        """
+        A 3-char work title that ends in a proper suffix (帖/碑/序…) must
+        still be stored correctly even though it's short.
+        """
+        author, work = extract_author_and_source(self._row("顏真卿", "自敘帖"))
+        self.assertEqual(work, "自敘帖")
+
+    def test_legitimate_work_in_eight_preserved(self):
+        author, work = extract_author_and_source(self._row("褚遂良", "雁塔聖教序"))
+        self.assertEqual(author, "褚遂良")
+        self.assertEqual(work, "雁塔聖教序")
+
+    # ── Reference/book title in row[7] with row[8] work present ──────────────
+    def test_reference_title_in_seven_blocked(self):
+        """
+        If row[7] is a reference book (looks_like_work), it must not become
+        the calligrapher even when row[8] is also present.
+        """
+        author, work = extract_author_and_source(self._row("古文四聲韻", "某字"))
+        self.assertEqual(author, "Unknown")
 
 
 if __name__ == "__main__":

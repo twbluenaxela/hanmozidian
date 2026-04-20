@@ -177,10 +177,10 @@ class TestLooksLikeWork(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertTrue(looks_like_work(name))
 
-    def test_ji_suffix_not_recognised(self):
-        # 記 is NOT in WORK_SUFFIX_CHARS — documents current behaviour.
-        # If you add 記 to the set, flip this to assertTrue.
-        self.assertFalse(looks_like_work("麻姑仙壇記"))
+    def test_ji_suffix_recognised(self):
+        # 記 was added to WORK_SUFFIX_CHARS — 麻姑仙壇記 is correctly a work title.
+        
+        self.assertTrue(looks_like_work("麻姑仙壇記"))
 
     def test_zidian_two_char_suffix(self):
         self.assertTrue(looks_like_work("字典"))
