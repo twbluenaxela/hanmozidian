@@ -27,3 +27,6 @@ data/zhuojg
 data/seed_texts
 data/*.log
 README.md
+
+# Annotation pipeline — local dev only, not needed in production image
+pipeline/

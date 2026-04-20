@@ -62,5 +62,5 @@ next-env.d.ts
 # Scraped data staging
 /data/scraped/
 
-# NPM pipeline local data (images, processed output, annotations)
-/pipeline/data/
+# NPM annotation pipeline — local dev tool only, not for production
+/pipeline/
