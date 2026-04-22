@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId } from "react";
+import React, { useId, useState, useEffect, useRef } from "react";
 
 interface CalligraphyCharacterProps {
   imageUrl: string;
@@ -30,6 +30,26 @@ export default function CalligraphyCharacter({
   borderColor = "var(--border)",
 }: CalligraphyCharacterProps) {
   const filterId = useId().replace(/:/g, "");
+
+  const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
+  const [retryToken, setRetryToken] = useState(0);
+  const attemptRef = useRef(0);
+
+  useEffect(() => {
+    setStatus("loading");
+    setRetryToken(0);
+    attemptRef.current = 0;
+  }, [imageUrl]);
+
+  // One retry with a cache-buster absorbs transient R2/network drops on mobile.
+  const handleError = () => {
+    if (attemptRef.current < 1) {
+      attemptRef.current += 1;
+      setTimeout(() => setRetryToken((t) => t + 1), 500);
+    } else {
+      setStatus("failed");
+    }
+  };
 
   let filterUrl = "";
   if (wireframe) {
@@ -121,19 +141,29 @@ export default function CalligraphyCharacter({
 
       {/* 2. Character Logic inside CalligraphyCharacter.tsx */}
 <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
-  <div className="w-[85%] h-[85%] flex items-center justify-center">
-    
+  <div className="relative w-[85%] h-[85%] flex items-center justify-center">
+
     {/* 🔥 STRICT CHECK: Only render img if imageUrl is a real string */}
-    {typeof imageUrl === 'string' && imageUrl.length > 5 ? (
-      <img
-        src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1`}
-        alt={char}
-        className="max-w-full max-h-full object-contain transition-all duration-300"
-        crossOrigin="anonymous" 
-        style={{ filter: filterUrl ? filterUrl : baseCssFilter }}
-      />
+    {typeof imageUrl === 'string' && imageUrl.length > 5 && status !== "failed" ? (
+      <>
+        {status === "loading" && (
+          <div className="absolute inset-0 rounded-md bg-[var(--border)]/30 animate-pulse" aria-hidden="true" />
+        )}
+        <img
+          src={`${imageUrl}${imageUrl.includes('?') ? '&' : '?'}cors=1${retryToken > 0 ? `&r=${retryToken}` : ''}`}
+          alt={char}
+          className="max-w-full max-h-full object-contain transition-all duration-300"
+          crossOrigin="anonymous"
+          onLoad={() => setStatus("loaded")}
+          onError={handleError}
+          style={{
+            filter: filterUrl ? filterUrl : baseCssFilter,
+            opacity: status === "loaded" ? 1 : 0,
+          }}
+        />
+      </>
     ) : (
-      /* Fallback if URL is corrupted */
+      /* Fallback if URL is corrupted or image failed to load after retry */
       <span className="text-4xl opacity-20">{char}</span>
     )}
 
