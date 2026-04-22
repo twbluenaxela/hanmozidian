@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toPng } from "html-to-image";
+import { useImageRetry } from "@/lib/useImageRetry";
 
 const PAPERS = [
   { id: "white", name: "純白", color: "#ffffff" },
@@ -76,6 +77,8 @@ export default function ZitieModal({ char, images, initialImageId, onClose }: Zi
 
   const cellSize = 120;
   const selectedImage = images.find((i) => i.id === selectedId) ?? images[0];
+  const { status: imgStatus, src: imgSrc, onLoad: onImgLoad, onError: onImgError } =
+    useImageRetry(selectedImage?.imageUrl ?? "", "cors=1");
   const totalCells = cols * rows;
 
   const handleExport = async () => {
@@ -308,20 +311,30 @@ export default function ZitieModal({ char, images, initialImageId, onClose }: Zi
                   }}
                 >
                   <GridOverlay type={gridType} />
-                  {showImage && (
+                  {showImage && imgStatus !== "failed" && (
                     <div
                       className="absolute inset-0 flex items-center justify-center"
                       style={{ padding: "8%", opacity: imgOpacity }}
                     >
+                      {imgStatus === "loading" && (
+                        <div
+                          className="absolute inset-[8%] rounded-md bg-[var(--border)]/30 animate-pulse"
+                          aria-hidden="true"
+                        />
+                      )}
                       <img
-                        src={`${selectedImage.imageUrl}${selectedImage.imageUrl.includes("?") ? "&" : "?"}cors=1`}
+                        src={imgSrc}
                         alt={char}
                         crossOrigin="anonymous"
+                        onLoad={onImgLoad}
+                        onError={onImgError}
                         style={{
                           maxWidth: "100%",
                           maxHeight: "100%",
                           objectFit: "contain",
                           filter: imgFilter,
+                          opacity: imgStatus === "loaded" ? 1 : 0,
+                          transition: "opacity 200ms",
                         }}
                       />
                     </div>

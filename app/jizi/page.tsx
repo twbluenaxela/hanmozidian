@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import JiziPicker from "@/components/JiziPicker";
 import CalligraphyCharacter from "@/components/CalligraphyCharacter";
 import { resolveCurrentImage } from "@/lib/utils";
+import { useImageRetry } from "@/lib/useImageRetry";
 import { toPng } from "html-to-image";
 import { useAuth } from "@/lib/auth-context";
 import { saveJizi } from "@/lib/savedJizi";
@@ -81,6 +82,26 @@ const TAB_LABELS: [BottomTab, string][] = [
   ["style", "字形"],
   ["filter", "篩選"],
 ];
+
+function GalleryThumb({ imageUrl }: { imageUrl: string }) {
+  const { status, src, onLoad, onError } = useImageRetry(imageUrl, "gallery=1");
+  if (status === "failed") return null;
+  return (
+    <>
+      {status === "loading" && (
+        <div className="absolute inset-0 rounded-md bg-[var(--border)]/30 animate-pulse" aria-hidden="true" />
+      )}
+      <img
+        src={src}
+        onLoad={onLoad}
+        onError={onError}
+        className="w-full h-full object-contain grayscale transition-opacity duration-200"
+        style={{ opacity: status === "loaded" ? 1 : 0 }}
+        alt=""
+      />
+    </>
+  );
+}
 
 export default function JiziPage() {
   const { user } = useAuth();
@@ -318,9 +339,9 @@ export default function JiziPage() {
                         [targetIdx]: { ...(prev[targetIdx] || DEFAULT_SETTINGS), selectedImageId: img.id },
                       }));
                     }}
-                    className={`shrink-0 w-14 h-14 bg-white rounded-lg border-2 overflow-hidden ${String(composition[activeIndices[0]]?.selectedImageId) === String(img.id) ? "border-[var(--accent)] ring-2 ring-[var(--accent)]/30" : "border-transparent"}`}
+                    className={`relative shrink-0 w-14 h-14 bg-white rounded-lg border-2 overflow-hidden ${String(composition[activeIndices[0]]?.selectedImageId) === String(img.id) ? "border-[var(--accent)] ring-2 ring-[var(--accent)]/30" : "border-transparent"}`}
                   >
-                    <img src={`${img.imageUrl}${img.imageUrl.includes("?") ? "&" : "?"}gallery=1`} className="w-full h-full object-contain grayscale" alt="" />
+                    <GalleryThumb imageUrl={img.imageUrl} />
                   </button>
                 ))}
               </div>
