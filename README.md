@@ -1,18 +1,79 @@
 # 書法字典 (Chinese Calligraphy Dictionary)
 
-A reference tool for calligraphers to look up how famous historical calligraphers wrote specific characters across different script styles (篆書, 隸書, 楷書, 行書, 草書).
+A reference tool for calligraphers to look up how famous historical calligraphers wrote specific characters across different script styles (金文、小篆、隸書、楷書、行書、草書).
 
 ## Features
 
-- **字典 mode** — Look up a character and browse historical calligraphy examples across all 5 script styles, filtered by calligrapher or famous work.
-- **集字 mode** — Type a phrase, pick a script style, and compose a visual reference board. Swap individual characters between different calligraphers' versions, adjust sizing and borders, and export the result as a PNG.
+### 字典模式 (Dictionary)
+Look up a single character and browse historical calligraphy examples across all 6 script styles. Filter by calligrapher or famous work.
+
+### 集字工坊 (Jizi / Character Composition)
+Type a phrase, pick a script style, and compose a visual reference board:
+- **Layout**: Horizontal or vertical orientation, adjustable grid size and spacing
+- **Paper styles**: Transparent, white, raw xuan paper, gold paper
+- **Character effects**: Mi-zi grid, Jiu-gong grid, invert (rubbing style), wireframe, background removal
+- **Borders**: Square or circular, customizable color and width
+- **Export**: Save as high-resolution PNG
+
+### 碑帖瀏覽 (Browse by Work/Calligrapher)
+Browse all characters from a specific calligrapher or famous work, with infinite scroll and lightbox viewing.
+
+### 個人中心 (My Collection)
+- Save favorite characters
+- Store and edit Jizi compositions
+- Export saved works
+
+### 管理後台 (Admin)
+NPM (National Palace Museum) digital collection annotation workspace for processing and labeling stele/rubbing images.
 
 ## Tech Stack
 
 - **Frontend**: Next.js 16 (App Router) + TypeScript + Tailwind CSS
 - **Database**: SQLite (via `better-sqlite3`) + Drizzle ORM
 - **Image Storage**: Cloudflare R2 in production, local `public/images/` in dev
+- **Authentication**: Firebase Auth (Google + Email/Password)
 - **Data Scripts**: Python (dataset ingestion + scraping)
+- **Deployment**: Fly.io + Docker
+
+## Data Sources
+
+### Primary Sources
+
+- **zi.tools** — Web scraping from zi.tools API. Covers all 6 script styles including 金文 (bronze inscription). Rate-limited, non-commercial use only.
+- **zhuojg/chinese-calligraphy-dataset** — Calligrapher-organized dataset with style and author metadata. Apache 2.0.
+- **NPM (National Palace Museum) Open Data** — Digital collection of steles, rubbings, and calligraphy works for annotation and research.
+
+### Ingestion Scripts
+
+```bash
+# zi.tools scraping (covers all 6 styles including 金文)
+python scripts/scrape_zi_tools.py --chars "永和九年"
+
+# Batch from text file
+python scripts/scrape_zi_tools.py \
+  --chars-file data/seed_texts/lan_ting_xu.txt \
+  --output-dir public/images \
+  --db data/shufazidian.db \
+  --rate 2.0
+
+# zhuojg dataset — folder names like 楷-柳公权 encode style + author/work
+# Smoke test first:
+python scripts/ingest_zhuojg.py \
+  --calligrapher-dir data/zhuojg/chinese-calligraphy-dataset-with-calligrapher \
+  --dry-run --limit 2
+
+# Real ingest (idempotent: --clean-source resets DB rows for source=zhuojg):
+python scripts/ingest_zhuojg.py \
+  --calligrapher-dir data/zhuojg/chinese-calligraphy-dataset-with-calligrapher \
+  --output-dir public/images --db data/shufazidian.db --clean-source
+```
+
+Python dependencies:
+```bash
+pip install requests Pillow tqdm opencc-python-reimplemented boto3 python-dotenv
+```
+
+`opencc-python-reimplemented` converts simplified character labels to traditional forms so they match the seeded characters table.
 
 ## Getting Started
 
@@ -20,7 +81,7 @@ A reference tool for calligraphers to look up how famous historical calligrapher
 npm install
 npx drizzle-kit push                 # create SQLite schema
 npx tsx scripts/seed_reference.ts    # seed styles, calligraphers, works
-# Then run an ingestion script (see Data Sources below) to populate images.
+# Then run an ingestion script (see Data Sources above) to populate images.
 npm run dev
 ```
 
@@ -72,46 +133,6 @@ The test suite covers:
 
 API route tests mock `@/lib/db/queries` entirely — no SQLite required.
 
-## Data Sources
-
-### Primary datasets
-
-- **MCCD** — 329,715 images, 7,765 characters, 142 calligraphers, with script style and dynasty metadata. Requires application (CC BY-NC-ND 4.0).
-- **zhuojg/chinese-calligraphy-dataset** — 138,499 images, Apache 2.0.
-
-### Supplementary
-
-Web scraping from sites like shufazidian.com and cidianwang.com (rate-limited, non-commercial use only).
-
-### Ingestion scripts
-
-```bash
-# Once you've downloaded MCCD LMDB files:
-python scripts/ingest_mccd.py --lmdb-path /path/to/mccd/lmdb
-
-# zhuojg — folder names like 楷-柳公权 encode style + author/work.
-# Smoke test first:
-python scripts/ingest_zhuojg.py \
-  --calligrapher-dir data/zhuojg/chinese-calligraphy-dataset-with-calligrapher \
-  --dry-run --limit 2
-
-# Real ingest (idempotent: --clean-source resets DB rows for source=zhuojg):
-python scripts/ingest_zhuojg.py \
-  --calligrapher-dir data/zhuojg/chinese-calligraphy-dataset-with-calligrapher \
-  --output-dir public/images --db data/shufazidian.db --clean-source
-
-# Supplementary scraping:
-python scripts/scrape_zi_tools.py --characters "永和九年"
-```
-
-Python dependencies:
-
-```bash
-pip install lmdb Pillow tqdm opencc-python-reimplemented requests beautifulsoup4 boto3 python-dotenv
-```
-
-`opencc-python-reimplemented` converts simplified character labels in the zhuojg dataset to traditional forms so they match the seeded characters table.
-
 ## Uploading Images to Cloudflare R2
 
 ```bash
@@ -121,7 +142,7 @@ python scripts/upload_to_r2.py --dry-run
 # Upload (skips files already in R2, 8 parallel threads by default)
 python scripts/upload_to_r2.py
 
-# Tune parallelism for large runs (~138k files)
+# Tune parallelism for large runs
 python scripts/upload_to_r2.py --workers 16
 
 # Upload and delete local copies after success
@@ -167,8 +188,8 @@ The DB is read-only at runtime on Fly. To ship new data:
 
 ```bash
 # 1. Update the local DB
-python scripts/ingest_zhuojg.py [...]
 python scripts/scrape_zi_tools.py [...]
+python scripts/ingest_zhuojg.py [...]
 
 # 2. Push new image binaries to R2
 python scripts/upload_to_r2.py --workers 16
@@ -188,12 +209,16 @@ shufazidian/
 │   ├── page.tsx                  # Home / 字典 mode (search)
 │   ├── character/[char]/page.tsx # Character detail (style tabs + grid)
 │   ├── jizi/page.tsx             # 集字 mode (phrase composition)
+│   ├── browse/page.tsx           # 碑帖瀏覽 (by calligrapher/work)
+│   ├── me/page.tsx               # 個人中心 (favorites + saved jizi)
+│   ├── admin/                    # 管理後台 (NPM annotation)
 │   └── api/
 │       ├── search/
 │       ├── character/[char]/images/
 │       ├── calligraphers/
 │       ├── works/
-│       └── jizi/
+│       ├── jizi/
+│       └── admin/npm/            # NPM data processing API
 ├── components/
 │   ├── SearchBar.tsx             # Search input with IME handling
 │   ├── StyleTabs.tsx             # 篆/隸/楷/行/草 tabs
@@ -203,27 +228,19 @@ shufazidian/
 │   ├── ImageModal.tsx            # Lightbox
 │   ├── CalligraphyCharacter.tsx  # Single character tile with filters/grids
 │   ├── JiziPicker.tsx            # Calligrapher/work filter sidebar
+│   ├── FavoriteButton.tsx        # Favorite toggle
 │   └── BottomNav.tsx             # 字典/碑帖/集字/我的
 ├── lib/
 │   ├── db/schema.ts              # Drizzle schema
 │   ├── db/index.ts               # DB connection
 │   ├── db/queries.ts             # Reusable query helpers
+│   ├── auth-context.tsx          # Firebase auth context
+│   ├── favorites.ts              # Favorite management
+│   ├── savedJizi.ts              # Saved jizi management
 │   └── utils.ts                  # charToUnicodeHex, resolveImageUrl, resolveCurrentImage
-├── __tests__/
-│   ├── lib/
-│   │   ├── utils.test.ts
-│   │   └── image-resolution.test.ts
-│   ├── api/
-│   │   ├── jizi.test.ts
-│   │   └── coverage.test.ts
-│   └── components/
-│       ├── CalligraphyCharacter.test.tsx
-│       ├── JiziPicker.test.tsx
-│       ├── JiziPage.test.tsx
-│       └── JiziPage.layout.test.tsx
+├── __tests__/                    # Jest test suite
 ├── scripts/
 │   ├── seed_reference.ts
-│   ├── ingest_mccd.py
 │   ├── ingest_zhuojg.py
 │   ├── scrape_zi_tools.py
 │   ├── upload_to_r2.py
@@ -242,11 +259,11 @@ shufazidian/
 | Table | Key columns |
 |---|---|
 | `characters` | `character`, `unicode_hex` |
-| `script_styles` | `name_zh`, `slug` (篆書 / 隸書 / 楷書 / 行書 / 草書) |
+| `script_styles` | `name_zh`, `slug` (金文 / 小篆 / 隸書 / 楷書 / 行書 / 草書) |
 | `calligraphers` | `name_zh`, `name_en`, `dynasty` |
 | `works` | famous pieces (蘭亭序, 祭姪文稿, …) with calligrapher + style |
 | `calligraphy_images` | character + style + calligrapher + work + `image_path` |
 
 ## License
 
-Non-commercial use only. Calligraphy images sourced from academic datasets (MCCD is CC BY-NC-ND 4.0).
+Non-commercial use only. Calligraphy images sourced from academic datasets and museum open data.
