@@ -1,1 +1,159 @@
-@AGENTS.md
+# CLAUDE.md — AI Assistant Context for 書法字典
+
+> 這份文件提供給 AI 助理（如 Claude）的快速專案上下文。閱讀此文件後，你應該能在不讀取整個程式碼庫的情況下，理解專案架構並做出正確的修改。
+
+## 專案概述
+
+**書法字典 (Shufazidian)** — 一個線上書法參考工具，讓使用者查詢歷代名家如何書寫特定漢字，涵蓋六種書體（金文、小篆、隸書、楷書、行書、草書）。
+
+## 技術棧（關鍵版本）
+
+- **Next.js 16.2.3** (App Router) — ⚠️ 這是較新版本，API 可能與你熟悉的 Next.js 不同
+- **React 19.2.4** — 新的 JSX transform，無需 `import React`
+- **Tailwind CSS v4** — 使用 `@tailwindcss/postcss`
+- **Drizzle ORM 0.45.2** + **better-sqlite3 12.8.0** (同步 SQLite)
+- **Firebase Auth** (Google + Email/Password)
+- **Cloudflare R2** (S3-compatible) for production images
+
+## 關鍵檔案位置
+
+| 想找什麼 | 去哪裡 |
+|---------|--------|
+| 資料庫 schema | `lib/db/schema.ts` |
+| 資料庫查詢 | `lib/db/queries.ts` |
+| 圖片 URL 解析 | `lib/utils.ts` |
+| 認證 context | `lib/auth-context.tsx` |
+| 收藏功能 | `lib/favorites.ts` |
+| 集字儲存 | `lib/savedJizi.ts` |
+| 首頁 | `app/page.tsx` |
+| 字典詳情頁 | `app/character/[char]/page.tsx` |
+| 集字工坊（最複雜頁面） | `app/jizi/page.tsx` |
+| 碑帖瀏覽 | `app/browse/page.tsx` |
+| 個人中心 | `app/me/page.tsx` |
+| 管理後台 | `app/admin/annotate/page.tsx` |
+| 搜尋 API | `app/api/search/route.ts` |
+| 集字 API | `app/api/jizi/route.ts` |
+| 字元圖片 API | `app/api/character/[char]/images/route.ts` |
+| 爬蟲腳本 | `scripts/scrape_zi_tools.py` |
+| 資料匯入 | `scripts/ingest_zhuojg.py` |
+| R2 上傳 | `scripts/upload_to_r2.py` |
+| 種子資料 | `scripts/seed_reference.ts` |
+| 測試 | `__tests__/` |
+| 完整程式碼庫摘要 | `SUMMARY.md` |
+
+## 常見程式碼模式
+
+### 新增 API Route
+
+```typescript
+// app/api/example/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+
+export const dynamic = "force-dynamic"; // 如果需要動態渲染
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const q = searchParams.get("q");
+  // ... 查詢邏輯
+  return NextResponse.json({ data });
+}
+```
+
+### 新增資料庫查詢
+
+```typescript
+// lib/db/queries.ts
+import { db } from "./index";
+import { calligraphyImages } from "./schema";
+import { eq, and } from "drizzle-orm";
+
+export function getExample(charId: number, styleId: number) {
+  return db
+    .select()
+    .from(calligraphyImages)
+    .where(and(
+      eq(calligraphyImages.characterId, charId),
+      eq(calligraphyImages.scriptStyleId, styleId)
+    ))
+    .all();
+}
+```
+
+### 新增頁面（App Router）
+
+```typescript
+// app/example/page.tsx
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "頁面標題 | 書法字典",
+};
+
+export default function ExamplePage() {
+  return <div>...</div>;
+}
+```
+
+### 動態路由（Next.js 15+ async params）
+
+```typescript
+// app/character/[char]/page.tsx
+import { use } from "react";
+
+export default function CharacterPage({ params }: { params: Promise<{ char: string }> }) {
+  const { char } = use(params);
+  // ...
+}
+```
+
+### 圖片 URL 解析
+
+```typescript
+import { resolveImageUrl } from "@/lib/utils";
+
+const imageUrl = resolveImageUrl(image.imagePath);
+// 開發：/images/...  |  生產：https://r2-public-url/images/...
+```
+
+## 測試模式
+
+- 使用 Jest + React Testing Library
+- API 測試 mock `@/lib/db/queries` — **不需要 SQLite 資料庫**
+- 元件測試使用 `jest-environment-jsdom`
+- 執行：`npm test` 或 `npm run test:watch`
+
+## 部署注意事項
+
+- **Fly.io** + Docker
+- DB 在生產環境是**唯讀**的 — 所有寫入必須在本機完成後部署
+- 部署前必須執行：`sqlite3 data/shufazidian.db "PRAGMA wal_checkpoint(TRUNCATE);"`
+- 每次 `fly deploy` 會用本機 DB 快照完全重建映像檔
+- 圖片儲存在 Cloudflare R2，DB 只存 metadata
+
+## 資料流
+
+```
+原始資料 → Python 腳本 → public/images/ + SQLite → upload_to_r2.py → R2
+                                    ↓
+                              fly deploy → Docker image with DB
+```
+
+## 環境變數
+
+複製 `.env.local.example` → `.env.local`，填入：
+- R2 憑證（生產圖片儲存）
+- Firebase 設定（認證）
+- `USE_R2=false`（開發）/ `true`（生產）
+
+## 重要提醒
+
+1. **Next.js 16 有 breaking changes** — 寫任何 Next.js 相關程式碼前，先查 `node_modules/next/dist/docs/`
+2. **better-sqlite3 是同步的** — 所有 Drizzle 查詢都是同步的，不需要 `await`
+3. **WAL 模式** — 本機開發時 SQLite 使用 WAL，部署前必須 checkpoint
+4. **zi.tools 有速率限制** — 爬蟲內建延遲，不要移除它
+5. **圖片正規化** — 所有圖片統一為 256px WebP
+
+---
+
+*完整詳情請見 `SUMMARY.md` 和 `README.md`*
