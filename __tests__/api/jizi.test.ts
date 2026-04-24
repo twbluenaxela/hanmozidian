@@ -12,6 +12,7 @@ jest.mock("@/lib/db/queries", () => ({
 
 jest.mock("@/lib/utils", () => ({
   resolveImageUrl: (p: string) => `/resolved/${p}`,
+  parseIdList: jest.requireActual("@/lib/utils").parseIdList,
 }));
 
 import { GET } from "@/app/api/jizi/route";

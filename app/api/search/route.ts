@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { characters, calligraphyImages, scriptStyles } from "@/lib/db/schema";
-import { eq, sql, count } from "drizzle-orm";
+import { getCharacterByChar, getStyleCounts } from "@/lib/db/queries";
 
-export const dynamic = 'force-dynamic'; // <--- ADD THIS
+// GET /api/search?q= — resolves each character in the query string to its
+// dictionary entry with per-style image counts. Missing characters are silently skipped.
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get("q");
@@ -11,33 +11,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ characters: [] });
   }
 
-  // Split query into individual characters and search each
-  const chars = [...q];
-
   const results = [];
-  for (const char of chars) {
-    const charRow = db
-      .select()
-      .from(characters)
-      .where(eq(characters.character, char))
-      .get();
-
+  for (const char of [...q]) {
+    const charRow = getCharacterByChar(char);
     if (!charRow) continue;
 
-    // Get image counts per style
-    const styleCounts = db
-      .select({
-        slug: scriptStyles.slug,
-        nameZh: scriptStyles.nameZh,
-        count: count(),
-      })
-      .from(calligraphyImages)
-      .innerJoin(scriptStyles, eq(calligraphyImages.styleId, scriptStyles.id))
-      .where(eq(calligraphyImages.characterId, charRow.id))
-      .groupBy(calligraphyImages.styleId)
-      .orderBy(scriptStyles.sortOrder)
-      .all();
-
+    const styleCounts = getStyleCounts(charRow.id);
     results.push({
       character: charRow.character,
       unicodeHex: charRow.unicodeHex,

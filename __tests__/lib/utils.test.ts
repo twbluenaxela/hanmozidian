@@ -1,4 +1,39 @@
-import { charToUnicodeHex, resolveImageUrl } from "@/lib/utils";
+import { charToUnicodeHex, resolveImageUrl, parseIdList } from "@/lib/utils";
+
+describe("parseIdList", () => {
+  it("returns undefined for null input", () => {
+    expect(parseIdList(null)).toBeUndefined();
+  });
+
+  it("returns undefined for an empty string", () => {
+    expect(parseIdList("")).toBeUndefined();
+  });
+
+  it("parses a single numeric id", () => {
+    expect(parseIdList("3")).toEqual([3]);
+  });
+
+  it("parses a comma-separated list of ids", () => {
+    expect(parseIdList("1,2,3")).toEqual([1, 2, 3]);
+  });
+
+  it("filters out non-numeric values", () => {
+    expect(parseIdList("abc,5,NaN")).toEqual([5]);
+  });
+
+  it("returns undefined when all values are non-numeric", () => {
+    expect(parseIdList("abc,xyz")).toBeUndefined();
+  });
+
+  it("handles a single non-numeric value", () => {
+    expect(parseIdList("foo")).toBeUndefined();
+  });
+
+  it("ignores leading/trailing whitespace entries via parseInt tolerence", () => {
+    // parseInt("  3 ") === 3
+    expect(parseIdList("  3  ")).toEqual([3]);
+  });
+});
 
 describe("charToUnicodeHex", () => {
   it("converts a CJK character to its hex code point", () => {

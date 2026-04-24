@@ -41,6 +41,16 @@ export function resolveCurrentImage(
   return images[0];
 }
 
+/**
+ * Parses a comma-separated integer id list from a query param string.
+ * Returns undefined (meaning "no filter") when the input is empty or all values are non-numeric.
+ */
+export function parseIdList(raw: string | null): number[] | undefined {
+  if (!raw) return undefined;
+  const ids = raw.split(",").map((s) => parseInt(s, 10)).filter((n) => Number.isFinite(n));
+  return ids.length > 0 ? ids : undefined;
+}
+
 export function resolveImageUrl(imagePath: string): string {
   const useR2 = process.env.USE_R2 === "true";
   const r2PublicUrl = process.env.R2_PUBLIC_URL || "";

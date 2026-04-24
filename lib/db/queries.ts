@@ -8,6 +8,7 @@ import {
 } from "./schema";
 import { eq, and, sql, count, inArray, desc } from "drizzle-orm";
 
+/** Full-text search across the characters table, up to 50 results. */
 export function searchCharacters(query: string) {
   return db
     .select({
@@ -21,6 +22,7 @@ export function searchCharacters(query: string) {
     .all();
 }
 
+/** Look up a single character row by its glyph. Returns undefined if not in the dictionary. */
 export function getCharacterByChar(char: string) {
   return db
     .select()
@@ -29,6 +31,7 @@ export function getCharacterByChar(char: string) {
     .get();
 }
 
+/** Returns per-style image counts for a character — used to populate the style tab bar. */
 export function getStyleCounts(characterId: number) {
   return db
     .select({
@@ -46,6 +49,11 @@ export function getStyleCounts(characterId: number) {
     .all();
 }
 
+/**
+ * Paginated image query for a single character with optional style,
+ * calligrapher, and work filters. Pass `random: true` for shuffle order
+ * (used by the jizi canvas to vary default selections).
+ */
 export function getImages(opts: {
   characterId: number;
   styleSlug?: string;
@@ -73,8 +81,7 @@ export function getImages(opts: {
       .from(scriptStyles)
       .where(eq(scriptStyles.slug, styleSlug))
       .get();
-    // FIX: If style is requested but not found, return empty array immediately
-    if (!style) return []; 
+    if (!style) return []; // unknown slug — nothing can match
     
     conditions.push(eq(calligraphyImages.styleId, style.id));
   }
@@ -111,6 +118,7 @@ export function getImages(opts: {
     .all();
 }
 
+/** Returns distinct calligraphers who have at least one image for the given character. */
 export function getCalligraphersForCharacter(characterId: number, styleSlug?: string) {
   const conditions = [eq(calligraphyImages.characterId, characterId)];
 
@@ -137,6 +145,7 @@ export function getCalligraphersForCharacter(characterId: number, styleSlug?: st
     .all();
 }
 
+/** Returns works, optionally filtered to those by a specific calligrapher or style. */
 export function getWorksForFilter(opts: {
   calligrapherId?: number;
   styleSlug?: string;
@@ -168,6 +177,7 @@ export function getWorksForFilter(opts: {
     .all();
 }
 
+/** Returns all script styles sorted by their display order. */
 export function getAllStyles() {
   return db
     .select()
@@ -290,11 +300,7 @@ export function getJiziCoverage(opts: {
   };
 }
 
-/**
- * Browse/gallery query — returns paginated images across ALL characters,
- * optionally filtered by calligrapher(s) or work(s). Includes the character
- * glyph so each image card can display what character it shows.
- */
+/** Resolves a work id to its Chinese name, or null if the work doesn't exist. */
 export function getWorkNameById(workId: number): string | null {
   const row = db
     .select({ nameZh: works.nameZh })
@@ -304,16 +310,19 @@ export function getWorkNameById(workId: number): string | null {
   return row?.nameZh ?? null;
 }
 
+/**
+ * Browse/gallery query — returns paginated images across ALL characters,
+ * optionally filtered by calligrapher(s) or work(s). Includes the character
+ * glyph so each image card can display what character it shows.
+ */
 export function getGalleryImages(opts: {
   calligrapherIds?: number[];
   workIds?: number[];
   page?: number;
   limit?: number;
-  /** Pass true to fetch all rows with no pagination (for text-order sorting) */
-  all?: boolean;
 }) {
-  const { calligrapherIds, workIds, page = 1, limit = 20, all = false } = opts;
-  const offset = all ? 0 : (page - 1) * limit;
+  const { calligrapherIds, workIds, page = 1, limit = 20 } = opts;
+  const offset = (page - 1) * limit;
 
   const conditions = [];
   if (calligrapherIds && calligrapherIds.length > 0) {
@@ -342,9 +351,67 @@ export function getGalleryImages(opts: {
     .innerJoin(scriptStyles, eq(calligraphyImages.styleId, scriptStyles.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(calligraphyImages.id)
-    .limit(all ? 100_000 : limit)
+    .limit(limit)
     .offset(offset)
     .all();
+}
+
+/**
+ * Corpus-ordered gallery query for a single work. Sorts images so that
+ * characters appear in the order they occur in the work's source text,
+ * with any characters not present in the corpus sorted last. Pagination
+ * happens entirely in SQLite — no rows are loaded into Node beyond the
+ * requested page.
+ *
+ * Uses a CASE WHEN expression to encode corpus rank directly in SQL.
+ * charOrder should come from charOrderFromText() on the corpus piece text.
+ */
+export function getGalleryImagesCorpusOrdered(opts: {
+  workId: number;
+  charOrder: string[];
+  page: number;
+  limit: number;
+}): { images: ReturnType<typeof getGalleryImages>; hasMore: boolean } {
+  const { workId, charOrder, page, limit } = opts;
+  const offset = (page - 1) * limit;
+
+  // Build: CASE "characters"."character" WHEN 'ch0' THEN 0 WHEN 'ch1' THEN 1 ... ELSE N END
+  // Characters absent from the corpus sort last (rank = charOrder.length).
+  const orderExpr = charOrder.length > 0
+    ? sql`CASE ${characters.character} ${sql.join(
+        charOrder.map((ch, i) => sql`WHEN ${ch} THEN ${i}`),
+        sql` `
+      )} ELSE ${charOrder.length} END`
+    : calligraphyImages.id;
+
+  // Fetch limit+1 rows so we can detect hasMore without a separate COUNT query.
+  const rows = db
+    .select({
+      id: calligraphyImages.id,
+      imagePath: calligraphyImages.imagePath,
+      character: characters.character,
+      calligrapherName: calligraphers.nameZh,
+      calligrapherId: calligraphyImages.calligrapherId,
+      workName: works.nameZh,
+      workId: calligraphyImages.workId,
+      styleName: scriptStyles.nameZh,
+      styleSlug: scriptStyles.slug,
+    })
+    .from(calligraphyImages)
+    .innerJoin(characters, eq(calligraphyImages.characterId, characters.id))
+    .leftJoin(calligraphers, eq(calligraphyImages.calligrapherId, calligraphers.id))
+    .leftJoin(works, eq(calligraphyImages.workId, works.id))
+    .innerJoin(scriptStyles, eq(calligraphyImages.styleId, scriptStyles.id))
+    .where(eq(calligraphyImages.workId, workId))
+    .orderBy(orderExpr, calligraphyImages.id)
+    .limit(limit + 1)
+    .offset(offset)
+    .all();
+
+  return {
+    images: rows.slice(0, limit),
+    hasMore: rows.length > limit,
+  };
 }
 
 /**

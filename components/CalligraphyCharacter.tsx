@@ -30,9 +30,13 @@ export default function CalligraphyCharacter({
   borderWidth = 1,
   borderColor = "var(--border)",
 }: CalligraphyCharacterProps) {
+  // useId produces a collision-free id per instance so multiple characters on
+  // the same canvas don't share SVG filter elements.
   const filterId = useId().replace(/:/g, "");
   const { status, src, onLoad, onError } = useImageRetry(imageUrl, "cors=1");
 
+  // Four SVG filter modes: ink-black/white (remove bg, keep strokes),
+  // wire-black/white (edge-detect to show stroke outlines only).
   let filterUrl = "";
   if (wireframe) {
     filterUrl = invert ? `url(#wire-white-${filterId})` : `url(#wire-black-${filterId})`;
@@ -52,14 +56,12 @@ export default function CalligraphyCharacter({
       style={{ 
         width: size, 
         height: size,
-        // DYNAMIC BORDER LOGIC
         border: showBorder ? `${borderWidth}px solid ${borderColor}` : 'none',
         borderRadius: borderShape === "circle" ? "50%" : "12px",
       }}
     >
       <svg style={{ position: 'absolute', width: 0, height: 0 }} aria-hidden="true">
         <defs>
-          {/* ... (keep existing filter definitions) ... */}
           <filter id={`ink-black-${filterId}`} colorInterpolationFilters="sRGB">
             <feFlood floodColor="white" result="whiteBG" /><feComposite in="SourceGraphic" in2="whiteBG" operator="over" result="cleanImage" />
             <feColorMatrix in="cleanImage" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1 -1 -1 1 1" result="alpha" />
@@ -79,24 +81,14 @@ export default function CalligraphyCharacter({
             <feConvolveMatrix in="cleanImage" order="3" kernelMatrix="-1 -1 -1 -1 8 -1 -1 -1 -1" preserveAlpha="true" result="edges" />
             <feColorMatrix in="edges" type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  1 1 1 0 0" /><feComponentTransfer><feFuncA type="linear" slope="2.5" intercept="-0.1" /><feFuncR type="linear" slope="0" intercept="1" /><feFuncG type="linear" slope="0" intercept="1" /><feFuncB type="linear" slope="0" intercept="1" /></feComponentTransfer>
           </filter>
-          <filter id={`bleed-${filterId}`} colorInterpolationFilters="sRGB">
-            <feFlood floodColor="white" result="whiteBG" />
-            <feComposite in="SourceGraphic" in2="whiteBG" operator="over" result="cleanImage" />
-            {/* The core: slightly thicken the ink (dilate) */}
-            <feMorphology operator="dilate" radius="0.5" in="cleanImage" result="thickened" />
-            {/* The soft edge: subtle blur */}
-            <feGaussianBlur stdDeviation="0.4" in="thickened" result="softened" />
-            {/* Re-apply the color matrix to turn it back to black ink */}
-          <feColorMatrix in="softened" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1 -1 -1 1 1" />
-        </filter>
-        </defs>
+</defs>
       </svg>
 
 {grid !== "none" && (
   <svg 
     className="absolute inset-0 w-full h-full pointer-events-none z-0" 
     viewBox="0 0 100 100"
-    style={{ opacity: 0.6 }} // Increased from 0.3
+    style={{ opacity: 0.6 }}
   >
     {/* Main Border */}
     <rect width="100" height="100" fill="none" stroke="#8b0000" strokeWidth="0.8" />
@@ -121,11 +113,9 @@ export default function CalligraphyCharacter({
   </svg>
 )}
 
-      {/* 2. Character Logic inside CalligraphyCharacter.tsx */}
-<div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
   <div className="relative w-[85%] h-[85%] flex items-center justify-center">
 
-    {/* 🔥 STRICT CHECK: Only render img if imageUrl is a real string */}
     {typeof imageUrl === 'string' && imageUrl.length > 5 && status !== "failed" ? (
       <>
         {status === "loading" && (
@@ -139,7 +129,7 @@ export default function CalligraphyCharacter({
           onLoad={onLoad}
           onError={onError}
           style={{
-            filter: filterUrl ? filterUrl : baseCssFilter,
+            filter: filterUrl || baseCssFilter,
             opacity: status === "loaded" ? 1 : 0,
           }}
         />

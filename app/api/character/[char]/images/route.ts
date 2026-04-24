@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCharacterByChar, getImages, getStyleCounts } from "@/lib/db/queries";
-import { resolveImageUrl } from "@/lib/utils";
-
-
-// Parse a comma-separated list of integer ids. Accepts null (empty param),
-// empty string, and single values. Returns undefined when there's nothing
-// to filter on so downstream query code treats it as "no filter".
-function parseIdList(raw: string | null): number[] | undefined {
-  if (!raw) return undefined;
-  const ids = raw
-    .split(",")
-    .map((s) => parseInt(s, 10))
-    .filter((n) => Number.isFinite(n));
-  return ids.length > 0 ? ids : undefined;
-}
+import { resolveImageUrl, parseIdList } from "@/lib/utils";
 
 export async function GET(
   request: NextRequest,
@@ -26,8 +13,8 @@ export async function GET(
   const calligrapherIds = parseIdList(searchParams.get("calligrapher"));
   const workIds = parseIdList(searchParams.get("work"));
   
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "50");
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+  const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") || "50") || 50), 200);
 
   const charRow = getCharacterByChar(decodeURIComponent(char));
   if (!charRow) {

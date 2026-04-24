@@ -117,7 +117,6 @@ export default function JiziPicker({
                 key={item.id}
                 disabled={isEmpty}
                 onClick={() => tab === "author" ? onToggleCalligrapher(item.id) : onToggleWork(item.id)}
-                // UPDATED CLASSES: text-sm, px-4, py-2
                 className={`px-4 py-2 rounded-full text-sm font-medium border transition-all flex items-center gap-2 ${
                   isEmpty 
                     ? "opacity-10 border-transparent cursor-not-allowed grayscale" 

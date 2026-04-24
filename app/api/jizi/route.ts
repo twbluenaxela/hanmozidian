@@ -1,12 +1,9 @@
+// GET /api/jizi?text=&style=&calligrapher=&work=
+// Returns per-character image arrays for the jizi canvas plus calligrapher/work
+// facets so the picker knows which filters have results.
 import { NextRequest, NextResponse } from "next/server";
 import { getCharacterByChar, getImages, getJiziCoverage } from "@/lib/db/queries";
-import { resolveImageUrl } from "@/lib/utils";
-
-function parseIdList(raw: string | null): number[] | undefined {
-  if (!raw) return undefined;
-  const ids = raw.split(",").map((s) => parseInt(s, 10)).filter((n) => Number.isFinite(n));
-  return ids.length > 0 ? ids : undefined;
-}
+import { resolveImageUrl, parseIdList } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -34,18 +31,17 @@ export async function GET(request: NextRequest) {
 
     knownIds.push(charRow.id);
 
-    // INCREASE LIMIT: Fetch 50 images so the user has real "selections"
     const images = getImages({
       characterId: charRow.id,
       styleSlug: style,
       calligrapherIds,
       workIds,
-      limit: 100, // INCREASED FROM 20 TO 100
-      random: false, // Turn off random so results are consistent while filtering
+      limit: 100,
+      random: false,
     });
 
     results.push({
-      id: charRow.id, // Needed for facets
+      id: charRow.id,
       character: char,
       found: true,
       images: images.map((img) => ({
@@ -55,7 +51,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // RE-ADD FACETS: This allows JiziPicker to show which calligraphers are available
   const { calligraphers, works } = getJiziCoverage({
     characterIds: knownIds,
     styleSlug: style,

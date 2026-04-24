@@ -38,6 +38,10 @@ function savedJiziCol(uid: string) {
   return collection(db, "users", uid, "savedJizi");
 }
 
+/**
+ * Persists a jizi composition to Firestore. Enforces the MAX_SAVED_JIZI cap
+ * and returns `{ error }` rather than throwing so callers can show UI feedback.
+ */
 export async function saveJizi(
   uid: string,
   data: SavedJiziData
@@ -56,10 +60,15 @@ export async function saveJizi(
   return {};
 }
 
+/** Deletes a saved jizi composition by its Firestore document id. */
 export async function deleteSavedJizi(uid: string, id: string) {
   await deleteDoc(doc(db, "users", uid, "savedJizi", id));
 }
 
+/**
+ * Live-synced list of the user's saved jizi compositions, ordered newest-first.
+ * Returns an empty array and cleans up the listener when uid is null.
+ */
 export function useSavedJizi(uid: string | null) {
   const [saved, setSaved] = useState<SavedJizi[]>([]);
 
@@ -68,8 +77,8 @@ export function useSavedJizi(uid: string | null) {
       setSaved([]);
       return;
     }
-    const r = query(savedJiziCol(uid), orderBy("savedAt", "desc"));
-    const unsubscribe = onSnapshot(r, (snap) => {
+    const q = query(savedJiziCol(uid), orderBy("savedAt", "desc"));
+    const unsubscribe = onSnapshot(q, (snap) => {
       setSaved(
         snap.docs.map((d) => ({ id: d.id, ...d.data() } as SavedJizi))
       );

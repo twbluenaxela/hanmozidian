@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { getBrowseFilters, getGalleryImages, getWorkNameById } from "@/lib/db/queries";
-import { resolveImageUrl } from "@/lib/utils";
+import { getBrowseFilters, getGalleryImages, getGalleryImagesCorpusOrdered, getWorkNameById } from "@/lib/db/queries";
+import { resolveImageUrl, parseIdList } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Corpus helpers
@@ -62,19 +62,6 @@ function findCorpusPiece(workName: string): CorpusPiece | null {
 }
 
 // ---------------------------------------------------------------------------
-// ID list parser
-// ---------------------------------------------------------------------------
-
-function parseIdList(raw: string | null): number[] | undefined {
-  if (!raw) return undefined;
-  const ids = raw
-    .split(",")
-    .map((s) => parseInt(s, 10))
-    .filter((n) => Number.isFinite(n));
-  return ids.length > 0 ? ids : undefined;
-}
-
-// ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
 
@@ -89,8 +76,8 @@ export async function GET(request: NextRequest) {
 
   const calligrapherIds = parseIdList(searchParams.get("calligrapher"));
   const workIds = parseIdList(searchParams.get("work"));
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = Math.min(parseInt(searchParams.get("limit") || "20"), 50);
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+  const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") || "20") || 20), 50);
 
   // ── Text-ordered mode: single work with corpus text ──────────────────────
   // Only applies when browsing a single work (not a calligrapher filter).
@@ -99,34 +86,19 @@ export async function GET(request: NextRequest) {
     const piece = workName ? findCorpusPiece(workName) : null;
 
     if (piece) {
-      // Fetch ALL images for this work (bounded by corpus size, safe to load)
-      const allImages = getGalleryImages({ workIds, all: true });
-      const processed = allImages.map((img) => ({
-        ...img,
-        imageUrl: resolveImageUrl(img.imagePath),
-      }));
-
-      // Build char → rank map from corpus text
       const charOrder = charOrderFromText(piece.text);
-      const rankMap = new Map(charOrder.map((ch, i) => [ch, i]));
-
-      // Sort: chars in text first (by position), then remaining chars
-      processed.sort((a, b) => {
-        const ra = rankMap.has(a.character) ? rankMap.get(a.character)! : Infinity;
-        const rb = rankMap.has(b.character) ? rankMap.get(b.character)! : Infinity;
-        if (ra !== rb) return ra - rb;
-        return a.id - b.id;
-      });
-
-      const offset = (page - 1) * limit;
-      const slice = processed.slice(offset, offset + limit);
-
-      return NextResponse.json({
-        images: slice,
+      const { images, hasMore } = getGalleryImagesCorpusOrdered({
+        workId: workIds[0],
+        charOrder,
         page,
         limit,
-        hasMore: offset + limit < processed.length,
-        total: processed.length,
+      });
+
+      return NextResponse.json({
+        images: images.map((img) => ({ ...img, imageUrl: resolveImageUrl(img.imagePath) })),
+        page,
+        limit,
+        hasMore,
         corpusOrdered: true,
       });
     }

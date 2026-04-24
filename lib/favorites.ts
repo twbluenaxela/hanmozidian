@@ -28,6 +28,7 @@ function favoriteDoc(uid: string, imageId: number) {
   return doc(db, "users", uid, "favorites", String(imageId));
 }
 
+/** Writes an image to the user's favorites subcollection with a server timestamp. */
 export async function addFavorite(uid: string, image: FavoriteImage) {
   await setDoc(favoriteDoc(uid, image.id), {
     imageId: image.id,
@@ -40,10 +41,15 @@ export async function addFavorite(uid: string, image: FavoriteImage) {
   });
 }
 
+/** Deletes a single favorite document. No-op if the document doesn't exist. */
 export async function removeFavorite(uid: string, imageId: number) {
   await deleteDoc(favoriteDoc(uid, imageId));
 }
 
+/**
+ * Live-synced list of the user's favorited images via Firestore onSnapshot.
+ * Returns an empty array and cleans up the listener when uid is null (logged out).
+ */
 export function useFavorites(uid: string | null) {
   const [favorites, setFavorites] = useState<Favorite[]>([]);
 
