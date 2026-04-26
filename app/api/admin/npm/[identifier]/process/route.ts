@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
+import { isAllowedUpstreamUrl } from "@/lib/security/url-allowlist";
 
 const PIPELINE_DIR = path.resolve(process.cwd(), "pipeline");
+const PYTHON = path.resolve(process.cwd(), ".venv/bin/python3");
 const DATA_DIR = path.join(PIPELINE_DIR, "data");
 const RAW_DIR = path.join(DATA_DIR, "raw");
 const INDEX_FILE = path.join(DATA_DIR, "works_index.json");
+const IDENTIFIER_RE = /^[\p{L}\p{N}._-]{1,128}$/u;
 
 function safeFilename(identifier: string) {
   return encodeURIComponent(identifier).replace(/%/g, "_");
@@ -19,12 +22,13 @@ function loadIndex(): Record<string, any> {
 
 async function ensureImageDownloaded(identifier: string): Promise<boolean> {
   const safe = safeFilename(identifier);
-  const dest = path.join(RAW_DIR, `${safe}.jpg`);
+  const dest = path.resolve(RAW_DIR, `${safe}.jpg`);
+  if (!dest.startsWith(RAW_DIR + path.sep)) return false;
   if (fs.existsSync(dest)) return true;
 
   const index = loadIndex();
   const imageUrl = index[identifier]?.imageUrl;
-  if (!imageUrl) return false;
+  if (!isAllowedUpstreamUrl(imageUrl)) return false;
 
   try {
     const res = await fetch(imageUrl);
@@ -46,6 +50,10 @@ export async function POST(
 ) {
   const { identifier } = await params;
 
+  if (!IDENTIFIER_RE.test(identifier)) {
+    return NextResponse.json({ error: "invalid identifier" }, { status: 400 });
+  }
+
   const index = loadIndex();
   if (!index[identifier]) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -57,9 +65,9 @@ export async function POST(
   }
 
   const result = spawnSync(
-    "python3",
+    PYTHON,
     [path.join(PIPELINE_DIR, "process.py"), "--id", identifier],
-    { cwd: PIPELINE_DIR, timeout: 180_000, encoding: "utf-8" }
+    { cwd: PIPELINE_DIR, timeout: 180_000, encoding: "utf-8", env: { ...process.env, FLAGS_use_mkldnn: "0" } }
   );
 
   if (result.status !== 0) {
@@ -68,7 +76,11 @@ export async function POST(
   }
 
   const safe = safeFilename(identifier);
-  const boxesFile = path.join(DATA_DIR, "processed", safe, "boxes.json");
+  const processedDir = path.join(DATA_DIR, "processed");
+  const boxesFile = path.resolve(processedDir, safe, "boxes.json");
+  if (!boxesFile.startsWith(processedDir + path.sep)) {
+    return NextResponse.json({ error: "invalid identifier" }, { status: 400 });
+  }
   if (!fs.existsSync(boxesFile)) {
     return NextResponse.json({ error: "process.py ran but produced no output" }, { status: 500 });
   }

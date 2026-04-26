@@ -43,25 +43,44 @@ export default function AdminPage() {
   const [activeStatus, setActiveStatus] = useState<WorkStatus | "all">("all");
   const [activeCategory, setActiveCategory] = useState<string | "all">("all");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Debounce so search doesn't fire a request on every keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(id);
+  }, [query]);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
+    const controller = new AbortController();
     const params = new URLSearchParams();
     if (activeStatus !== "all") params.set("status", activeStatus);
     if (activeCategory !== "all") params.set("category", activeCategory);
-    if (query) params.set("q", query);
-    fetch(`/api/admin/npm?${params}`)
-      .then((r) => r.json())
+    if (debouncedQuery) params.set("q", debouncedQuery);
+    fetch(`/api/admin/npm?${params}`, { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         setWorks(data.works || []);
         setStatusCounts(data.statusCounts || {});
         setCategoryCounts(data.categoryCounts || {});
         setTotal(data.total || 0);
         setLoading(false);
+      })
+      .catch((e) => {
+        if (e.name === "AbortError") return;
+        setError("載入失敗，請重試");
+        setLoading(false);
       });
-  }, [activeStatus, activeCategory, query]);
+    return () => controller.abort();
+  }, [activeStatus, activeCategory, debouncedQuery]);
 
   const totalAll = Object.values(statusCounts).reduce((a, b) => a + b, 0);
 
@@ -139,7 +158,11 @@ export default function AdminPage() {
         </div>
 
         {/* Work list */}
-        {loading ? (
+        {error ? (
+          <div role="alert" className="flex items-center justify-center h-48 text-red-400 text-sm">
+            {error}
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center h-48 text-[var(--muted)]">載入中...</div>
         ) : works.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 text-[var(--muted)] space-y-2">

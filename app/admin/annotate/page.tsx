@@ -12,6 +12,7 @@ interface Box {
   confidence: number;
   source: "projection" | "paddle" | "manual";
   char?: string;
+  page: number;
 }
 
 interface WorkData {
@@ -32,9 +33,16 @@ interface BoxesData {
   shiwen: string[];
 }
 
+type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
 let _idSeq = 0;
 function makeId() {
   return `box-${Date.now()}-${++_idSeq}`;
+}
+
+// Sort boxes globally by page only — within each page, draw order (array order) is preserved
+function sortedGlobalOrder(boxes: Box[]): Box[] {
+  return [...boxes].sort((a, b) => a.page - b.page);
 }
 
 function AnnotateInner() {
@@ -42,13 +50,13 @@ function AnnotateInner() {
   const searchParams = useSearchParams();
   const identifier = searchParams.get("id") || "";
 
-  const [renderScale, setRenderScale] = useState(1); // Ratio of screen size to natural image size
+  const [renderScale, setRenderScale] = useState(1);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [work, setWork] = useState<WorkData | null>(null);
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [imageSize, setImageSize] = useState({ w: 1, h: 1 });
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [shiwenChars, setShiwenChars] = useState<string[]>([]);
   const [shiwenInput, setShiwenInput] = useState("");
   const [calligrapherInput, setCalligrapherInput] = useState("");
@@ -56,12 +64,20 @@ function AnnotateInner() {
   const [drawMode, setDrawMode] = useState(false);
   const [drawing, setDrawing] = useState<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const resizingRef = useRef<{
+    id: string; handle: ResizeHandle;
+    startX: number; startY: number;
+    origX: number; origY: number; origW: number; origH: number;
+  } | null>(null);
+  const [, forceUpdate] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [scale, setScale] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [processing, setProcessing] = useState(false);
   const [processError, setProcessError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
   const imgRef = useRef<HTMLImageElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -70,15 +86,17 @@ function AnnotateInner() {
     if (!identifier) return;
     fetch(`/api/admin/npm/${encodeURIComponent(identifier)}`)
       .then((r) => r.json())
-      .then(({ work, boxes: boxData }: { work: WorkData; boxes: BoxesData | null }) => {
+      .then(({ work, boxes: boxData, pageCount: pc }: { work: WorkData; boxes: BoxesData | null; pageCount: number }) => {
         setWork(work);
         setCalligrapherInput(work.calligrapher || "");
         setStyleInput(work.styleSlug || "");
+        setPageCount(pc ?? 1);
 
-        // Restore draft if available, otherwise use processed boxes
         if (work.annotationDraft) {
           const draft = JSON.parse(work.annotationDraft);
-          setBoxes(draft.boxes || []);
+          // Backward compat: old drafts have no page field on boxes
+          const migratedBoxes = (draft.boxes || []).map((b: any) => ({ ...b, page: b.page ?? 0 }));
+          setBoxes(migratedBoxes);
           setShiwenChars(draft.shiwenChars || []);
           setShiwenInput(draft.shiwenChars?.join("") || work.shiwen || "");
           setImageSize(draft.imageSize || { w: 1, h: 1 });
@@ -97,6 +115,7 @@ function AnnotateInner() {
       confidence: b.confidence,
       source: b.source as Box["source"],
       char: boxData.shiwen[i] || "",
+      page: 0,
     }));
     setBoxes(mapped);
     setShiwenChars(boxData.shiwen);
@@ -120,24 +139,19 @@ function AnnotateInner() {
     }
   }, [identifier, applyBoxData]);
 
-  // Recompute scale when image loads or zoom changes
   const handleImageLoad = useCallback(() => {
     if (!imgRef.current) return;
-    // This is the "secret sauce" to fix stretching:
-    // We find how much the browser shrunk the image to fit your screen.
     const naturalWidth = imgRef.current.naturalWidth;
     const currentWidth = imgRef.current.clientWidth;
     setRenderScale(currentWidth / naturalWidth);
   }, []);
 
-  // Recompute scale whenever zoom changes
   useEffect(() => {
     if (!imgRef.current || imageSize.w === 1) return;
     const naturalScale = imgRef.current.clientWidth / imageSize.w / zoom;
     setScale(naturalScale * zoom);
   }, [zoom, imageSize.w]);
 
-  // Scroll-to-zoom on the viewport
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -155,10 +169,28 @@ function AnnotateInner() {
     return () => window.removeEventListener("resize", handleImageLoad);
   }, [handleImageLoad]);
 
-  // Apply 釋文 to boxes in order
+  // Delete key shortcut
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (selectedIds.size === 0) return;
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+      e.preventDefault();
+      deleteSelected();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds]);
+
+  // Assign chars based on global sort order (page → y → x)
   const applyShiwen = useCallback((chars: string[]) => {
     setShiwenChars(chars);
-    setBoxes((prev) => prev.map((b, i) => ({ ...b, char: chars[i] || "" })));
+    setBoxes((prev) => {
+      const ordered = sortedGlobalOrder(prev);
+      const charMap = new Map(ordered.map((b, i) => [b.id, chars[i] || ""]));
+      return prev.map((b) => ({ ...b, char: charMap.get(b.id) || "" }));
+    });
   }, []);
 
   const handleShiwenChange = (val: string) => {
@@ -171,18 +203,54 @@ function AnnotateInner() {
   const handleBoxMouseDown = (e: React.MouseEvent, id: string) => {
     if (drawMode) return;
     e.stopPropagation();
-    setSelectedId(id);
-    setDragging({ id, startX: e.clientX, startY: e.clientY, origX: boxes.find(b => b.id === id)!.x, origY: boxes.find(b => b.id === id)!.y });
+    if (!e.shiftKey) {
+      setSelectedIds(new Set([id]));
+      setDragging({ id, startX: e.clientX, startY: e.clientY, origX: boxes.find(b => b.id === id)!.x, origY: boxes.find(b => b.id === id)!.y });
+    }
+    // shift+drag not supported — shift clicks are handled in onClick
+  };
+
+  // Resize handle mouse down
+  const handleResizeMouseDown = (e: React.MouseEvent, id: string, handle: ResizeHandle) => {
+    if (drawMode) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const box = boxes.find(b => b.id === id)!;
+    resizingRef.current = {
+      id, handle,
+      startX: e.clientX, startY: e.clientY,
+      origX: box.x, origY: box.y, origW: box.w, origH: box.h,
+    };
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (resizingRef.current) {
+      const { id, handle, startX, startY, origX, origY, origW, origH } = resizingRef.current;
+      const dx = (e.clientX - startX) / scale;
+      const dy = (e.clientY - startY) / scale;
+      const MIN = 10;
+      setBoxes((prev) => prev.map((b) => {
+        if (b.id !== id) return b;
+        let { x, y, w, h } = { x: origX, y: origY, w: origW, h: origH };
+        if (handle.includes("e")) w = Math.max(MIN, origW + dx);
+        if (handle.includes("w")) { w = Math.max(MIN, origW - dx); x = origX + origW - w; }
+        if (handle.includes("s")) h = Math.max(MIN, origH + dy);
+        if (handle.includes("n")) { h = Math.max(MIN, origH - dy); y = origY + origH - h; }
+        return { ...b, x, y, w, h };
+      }));
+      forceUpdate(n => n + 1);
+      return;
+    }
     if (!dragging) return;
     const dx = (e.clientX - dragging.startX) / scale;
     const dy = (e.clientY - dragging.startY) / scale;
     setBoxes((prev) => prev.map((b) => b.id === dragging.id ? { ...b, x: dragging.origX + dx, y: dragging.origY + dy } : b));
   }, [dragging, scale]);
 
-  const handleMouseUp = useCallback(() => { setDragging(null); }, []);
+  const handleMouseUp = useCallback(() => {
+    resizingRef.current = null;
+    setDragging(null);
+  }, []);
 
   useEffect(() => {
     window.addEventListener("mousemove", handleMouseMove);
@@ -195,12 +263,15 @@ function AnnotateInner() {
 
   // Draw new box
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (!drawMode || !canvasRef.current) return;
+    if (!drawMode) {
+      setSelectedIds(new Set());
+      return;
+    }
+    if (!canvasRef.current) return;
     const rect = canvasRef.current.getBoundingClientRect();
-    // Divide by both zoom (CSS) and renderScale (Image shrinkage)
-    setDrawing({ 
-      x: (e.clientX - rect.left) / (zoom * renderScale), 
-      y: (e.clientY - rect.top) / (zoom * renderScale) 
+    setDrawing({
+      x: (e.clientX - rect.left) / (zoom * renderScale),
+      y: (e.clientY - rect.top) / (zoom * renderScale),
     });
   };
 
@@ -217,10 +288,17 @@ function AnnotateInner() {
       h: Math.abs(y2 - drawing.y),
       confidence: 1,
       source: "manual",
-      char: shiwenChars[boxes.length] || "",
+      char: "",
+      page: currentPage,
     };
     if (newBox.w > 5 && newBox.h > 5) {
-      setBoxes((prev) => [...prev, newBox]);
+      setBoxes((prev) => {
+        const next = [...prev, newBox];
+        // Re-apply shiwen to account for new box in global order
+        const ordered = sortedGlobalOrder(next);
+        const charMap = new Map(ordered.map((b, i) => [b.id, shiwenChars[i] || ""]));
+        return next.map((b) => ({ ...b, char: charMap.get(b.id) || "" }));
+      });
     }
     setDrawing(null);
   };
@@ -228,10 +306,26 @@ function AnnotateInner() {
   const deleteBox = (id: string) => {
     setBoxes((prev) => {
       const next = prev.filter((b) => b.id !== id);
-      // Re-assign chars in order
-      return next.map((b, i) => ({ ...b, char: shiwenChars[i] || "" }));
+      const ordered = sortedGlobalOrder(next);
+      const charMap = new Map(ordered.map((b, i) => [b.id, shiwenChars[i] || ""]));
+      return next.map((b) => ({ ...b, char: charMap.get(b.id) || "" }));
     });
-    if (selectedId === id) setSelectedId(null);
+    setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+  };
+
+  const deleteSelected = () => {
+    setBoxes((prev) => {
+      const next = prev.filter((b) => !selectedIds.has(b.id));
+      const ordered = sortedGlobalOrder(next);
+      const charMap = new Map(ordered.map((b, i) => [b.id, shiwenChars[i] || ""]));
+      return next.map((b) => ({ ...b, char: charMap.get(b.id) || "" }));
+    });
+    setSelectedIds(new Set());
+  };
+
+  const clearAllBoxes = () => {
+    setBoxes([]);
+    setSelectedIds(new Set());
   };
 
   // Save draft
@@ -269,8 +363,28 @@ function AnnotateInner() {
     return () => clearInterval(timer);
   }, [saveDraft, work]);
 
-  const countMatch = boxes.length === shiwenChars.length;
-  const selectedBox = boxes.find((b) => b.id === selectedId);
+  // Global counts (all pages)
+  const totalBoxes = boxes.length;
+  const countMatch = totalBoxes === shiwenChars.length;
+  // Single selected box (for info panel / resize handles)
+  const singleSelectedBox = selectedIds.size === 1 ? boxes.find((b) => b.id === [...selectedIds][0]) : undefined;
+
+  // Boxes on current page, with their global char index
+  const globalOrdered = sortedGlobalOrder(boxes);
+  const globalIndexMap = new Map(globalOrdered.map((b, i) => [b.id, i]));
+  const currentPageBoxes = boxes.filter((b) => b.page === currentPage);
+
+  // Resize handle definitions: [handle key, cursor, left%, top%]
+  const HANDLES: [ResizeHandle, string, string, string][] = [
+    ["nw", "nw-resize", "-4px", "-4px"],
+    ["n",  "n-resize",  "calc(50% - 4px)", "-4px"],
+    ["ne", "ne-resize", "calc(100% - 4px)", "-4px"],
+    ["e",  "e-resize",  "calc(100% - 4px)", "calc(50% - 4px)"],
+    ["se", "se-resize", "calc(100% - 4px)", "calc(100% - 4px)"],
+    ["s",  "s-resize",  "calc(50% - 4px)", "calc(100% - 4px)"],
+    ["sw", "sw-resize", "-4px", "calc(100% - 4px)"],
+    ["w",  "w-resize",  "-4px", "calc(50% - 4px)"],
+  ];
 
   if (!work) {
     return <div className="flex items-center justify-center h-screen text-[var(--muted)]">載入中...</div>;
@@ -289,7 +403,23 @@ function AnnotateInner() {
           <p className="font-display text-base truncate">{work.name}</p>
           <p className="text-xs text-[var(--muted)]">{work.identifier} · {work.category}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Page navigation */}
+          {pageCount > 1 && (
+            <div className="flex items-center gap-1 border border-[var(--border)] rounded-lg overflow-hidden text-xs">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                className="px-2 py-1.5 hover:bg-[var(--card-bg)] transition-colors disabled:opacity-30">←</button>
+              <span className="px-2 py-1.5 text-[var(--muted)] min-w-[4rem] text-center tabular-nums">
+                頁 {currentPage + 1} / {pageCount}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(pageCount - 1, p + 1))}
+                disabled={currentPage === pageCount - 1}
+                className="px-2 py-1.5 hover:bg-[var(--card-bg)] transition-colors disabled:opacity-30">→</button>
+            </div>
+          )}
           {/* Zoom controls */}
           <div className="flex items-center gap-1 border border-[var(--border)] rounded-lg overflow-hidden text-xs">
             <button onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
@@ -341,7 +471,7 @@ function AnnotateInner() {
 
           {/* 釋文 */}
           <div>
-            <p className="text-[10px] uppercase font-bold text-[var(--accent)] mb-1">釋文</p>
+            <p className="text-[10px] uppercase font-bold text-[var(--accent)] mb-1">釋文（全卷）</p>
             <textarea
               value={shiwenInput}
               onChange={(e) => handleShiwenChange(e.target.value)}
@@ -363,8 +493,12 @@ function AnnotateInner() {
           {/* Stats */}
           <div className="bg-[var(--card-bg)] rounded-xl p-3 space-y-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-[var(--muted)]">框選數</span>
-              <span>{boxes.length}</span>
+              <span className="text-[var(--muted)]">此頁框選</span>
+              <span>{currentPageBoxes.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[var(--muted)]">全卷框選</span>
+              <span>{totalBoxes}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-[var(--muted)]">釋文字數</span>
@@ -372,7 +506,7 @@ function AnnotateInner() {
             </div>
             <div className={`flex justify-between font-bold ${countMatch ? "text-green-400" : "text-yellow-400"}`}>
               <span>狀態</span>
-              <span>{countMatch ? "✓ 對齊" : `差 ${Math.abs(boxes.length - shiwenChars.length)} 字`}</span>
+              <span>{countMatch ? "✓ 對齊" : `差 ${Math.abs(totalBoxes - shiwenChars.length)} 字`}</span>
             </div>
           </div>
 
@@ -396,22 +530,28 @@ function AnnotateInner() {
               {processError && (
                 <p className="text-xs text-red-400 text-center">{processError}</p>
               )}
-              {selectedBox && (
-                <button onClick={() => deleteBox(selectedBox.id)}
+              {selectedIds.size > 0 && (
+                <button onClick={deleteSelected}
                   className="w-full py-2 rounded-lg border border-red-400 text-red-400 text-xs font-bold hover:bg-red-400 hover:text-[var(--background)] transition-colors">
-                  刪除選取框
+                  {selectedIds.size > 1 ? `刪除 ${selectedIds.size} 框 (Del)` : "刪除選取框 (Del)"}
                 </button>
               )}
+              <button onClick={clearAllBoxes}
+                disabled={boxes.length === 0}
+                className="w-full py-2 rounded-lg border border-[var(--border)] text-[var(--muted)] text-xs font-bold hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-30">
+                清空框選
+              </button>
             </div>
           </div>
 
-          {/* Selected box info */}
-          {selectedBox && (
+          {/* Selected box info — only when exactly one box selected */}
+          {singleSelectedBox && (
             <div className="bg-[var(--card-bg)] rounded-xl p-3 space-y-1 text-xs">
               <p className="text-[10px] uppercase font-bold text-[var(--accent)] mb-2">選取框</p>
-              <div className="flex justify-between"><span className="text-[var(--muted)]">字</span><span className="font-display text-lg">{selectedBox.char || "—"}</span></div>
-              <div className="flex justify-between"><span className="text-[var(--muted)]">來源</span><span>{selectedBox.source}</span></div>
-              <div className="flex justify-between"><span className="text-[var(--muted)]">信心</span><span>{(selectedBox.confidence * 100).toFixed(0)}%</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">字</span><span className="font-display text-lg">{singleSelectedBox.char || "—"}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">序</span><span>#{(globalIndexMap.get(singleSelectedBox.id) ?? 0) + 1}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">來源</span><span>{singleSelectedBox.source}</span></div>
+              <div className="flex justify-between"><span className="text-[var(--muted)]">信心</span><span>{(singleSelectedBox.confidence * 100).toFixed(0)}%</span></div>
             </div>
           )}
         </div>
@@ -421,33 +561,32 @@ function AnnotateInner() {
           <div
             ref={canvasRef}
             className={`relative inline-block select-none ${drawMode ? "cursor-crosshair" : "cursor-default"}`}
-            style={{ 
-              transform: `scale(${zoom})`, 
+            style={{
+              transform: `scale(${zoom})`,
               transformOrigin: "top left",
-              maxWidth: "100%", // This prevents it from being "super huge"
-              maxHeight: "80vh" // Optional: keeps it on screen
+              maxWidth: "100%",
+              maxHeight: "80vh",
             }}
             onMouseDown={handleCanvasMouseDown}
             onMouseUp={handleCanvasMouseUp}
           >
             <img
+              key={`${identifier}-p${currentPage}`}
               ref={imgRef}
-              src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean`}
-              style={{ 
-                display: "block", 
-                maxWidth: "100%", // The image will not exceed the container
-                height: "auto"    // This maintains aspect ratio
-              }}
+              src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${currentPage}`}
+              style={{ display: "block", maxWidth: "100%", height: "auto" }}
               alt={work.name}
               className="block"
               onLoad={handleImageLoad}
               draggable={false}
             />
 
-            {/* Bounding boxes overlay */}
-            {boxes.map((box, i) => {
-              const isSelected = box.id === selectedId;
+            {/* Bounding boxes overlay — current page only */}
+            {currentPageBoxes.map((box) => {
+              const isSelected = selectedIds.has(box.id);
               const isLowConf = box.confidence < 0.5;
+              const globalIdx = globalIndexMap.get(box.id) ?? 0;
+              const color = isSelected ? "#e5b84a" : isLowConf ? "#f97316" : "#22c55e";
               return (
                 <div
                   key={box.id}
@@ -455,32 +594,58 @@ function AnnotateInner() {
                   style={{
                     position: "absolute",
                     left: box.x,
-                    top: box.y ,
+                    top: box.y,
                     width: box.w,
-                    height: box.h ,
-                    border: `2px solid ${isSelected ? "#e5b84a" : isLowConf ? "#f97316" : "#22c55e"}`,
+                    height: box.h,
+                    border: `2px solid ${color}`,
                     boxSizing: "border-box",
                     cursor: drawMode ? "crosshair" : "move",
                   }}
-                  onClick={(e) => { e.stopPropagation(); setSelectedId(box.id); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (e.shiftKey) {
+                      setSelectedIds((prev) => {
+                        const s = new Set(prev);
+                        if (s.has(box.id)) s.delete(box.id); else s.add(box.id);
+                        return s;
+                      });
+                    } else {
+                      setSelectedIds(new Set([box.id]));
+                    }
+                  }}
                 >
                   {/* Character label */}
                   <span style={{
                     position: "absolute", top: -18, left: 0,
                     fontSize: 11, lineHeight: 1,
-                    color: isSelected ? "#e5b84a" : "#22c55e",
+                    color,
                     background: "rgba(0,0,0,0.6)",
                     padding: "1px 3px", borderRadius: 2,
                     pointerEvents: "none", whiteSpace: "nowrap",
                   }}>
-                    {i + 1} {box.char || "?"}
+                    {globalIdx + 1} {box.char || "?"}
                   </span>
+
+                  {/* Resize handles — only on the single selected box */}
+                  {selectedIds.size === 1 && isSelected && HANDLES.map(([handle, cursor, left, top]) => (
+                    <div
+                      key={handle}
+                      onMouseDown={(e) => handleResizeMouseDown(e, box.id, handle)}
+                      style={{
+                        position: "absolute",
+                        left, top,
+                        width: 8, height: 8,
+                        background: "#e5b84a",
+                        border: "1px solid #000",
+                        borderRadius: 2,
+                        cursor,
+                        zIndex: 10,
+                      }}
+                    />
+                  ))}
                 </div>
               );
             })}
-
-            {/* Click outside to deselect */}
-            <div className="absolute inset-0 -z-10" onClick={() => setSelectedId(null)} />
           </div>
         </div>
       </div>

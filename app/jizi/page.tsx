@@ -7,9 +7,7 @@ import { resolveCurrentImage } from "@/lib/utils";
 import { useImageRetry } from "@/lib/useImageRetry";
 import { toPng } from "html-to-image";
 import { useAuth } from "@/lib/auth-context";
-import { saveJizi } from "@/lib/savedJizi";
-
-export const JIZI_LOAD_KEY = "jizi-load";
+import { saveJizi, JIZI_LOAD_KEY } from "@/lib/savedJizi";
 
 const STYLES = [
   { slug: "jinwen", nameZh: "金文" },

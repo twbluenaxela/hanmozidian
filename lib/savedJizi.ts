@@ -16,6 +16,9 @@ import { db } from "@/lib/firebase";
 
 export const MAX_SAVED_JIZI = 10;
 
+// sessionStorage key used to hand a saved composition from /me back to /jizi for editing.
+export const JIZI_LOAD_KEY = "jizi-load";
+
 export interface SavedJiziData {
   text: string;
   style: string;

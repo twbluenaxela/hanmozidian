@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   signInWithPopup,
   signOut,
@@ -14,8 +14,7 @@ import { useRouter } from "next/navigation";
 import FavoriteButton from "@/components/FavoriteButton";
 import { useAuth } from "@/lib/auth-context";
 import { useFavorites } from "@/lib/favorites";
-import { useSavedJizi, deleteSavedJizi, MAX_SAVED_JIZI, type SavedJizi } from "@/lib/savedJizi";
-import { JIZI_LOAD_KEY } from "@/app/jizi/page";
+import { useSavedJizi, deleteSavedJizi, MAX_SAVED_JIZI, JIZI_LOAD_KEY, type SavedJizi } from "@/lib/savedJizi";
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
@@ -139,8 +138,7 @@ function AuthCard() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [resetSent, setResetSent] = useState(false);
-
-  const clearError = () => setError(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const switchMode = (next: Mode) => {
     setMode(next);
@@ -148,42 +146,75 @@ function AuthCard() {
     setResetSent(false);
   };
 
-  const handleGoogleSignIn = () => signInWithPopup(auth, new GoogleAuthProvider());
+  const errorCode = (e: unknown): string =>
+    typeof e === "object" && e !== null && "code" in e
+      ? String((e as { code: unknown }).code)
+      : "";
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (e: unknown) {
+      const code = errorCode(e);
+      // Silently ignore user-cancelled popups; surface everything else.
+      if (code !== "auth/popup-closed-by-user" && code !== "auth/cancelled-popup-request") {
+        setError(authErrorMessage(code));
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSignIn = async () => {
-    clearError();
+    setError(null);
+    setIsSubmitting(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (e: unknown) {
-      setError(authErrorMessage((e as { code: string }).code));
+      setError(authErrorMessage(errorCode(e)));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleRegister = async () => {
-    clearError();
+    setError(null);
     if (password.length < MIN_PASSWORD_LENGTH) {
       setError(`密碼至少需要 ${MIN_PASSWORD_LENGTH} 個字元`);
       return;
     }
+    setIsSubmitting(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
     } catch (e: unknown) {
-      setError(authErrorMessage((e as { code: string }).code));
+      setError(authErrorMessage(errorCode(e)));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const handleReset = async () => {
-    clearError();
+    setError(null);
     if (!email) {
       setError("請輸入電子郵件");
       return;
     }
+    setIsSubmitting(true);
     try {
       await sendPasswordResetEmail(auth, email);
-      setResetSent(true);
     } catch (e: unknown) {
-      setError(authErrorMessage((e as { code: string }).code));
+      const code = errorCode(e);
+      // Treat "user not found" as success so attackers can't probe which emails are registered.
+      if (code !== "auth/user-not-found") {
+        setError(authErrorMessage(code));
+        setIsSubmitting(false);
+        return;
+      }
     }
+    setResetSent(true);
+    setIsSubmitting(false);
   };
 
   return (
@@ -192,7 +223,8 @@ function AuthCard() {
         <>
           <button
             onClick={handleGoogleSignIn}
-            className="flex items-center justify-center gap-3 w-full px-4 py-3 rounded-lg border border-[var(--border)] text-[var(--foreground)] text-sm font-medium hover:border-[var(--accent-dim)] hover:bg-[var(--card-hover)] transition-colors"
+            disabled={isSubmitting}
+            className="flex items-center justify-center gap-3 w-full px-4 py-3 rounded-lg border border-[var(--border)] text-[var(--foreground)] text-sm font-medium hover:border-[var(--accent-dim)] hover:bg-[var(--card-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <GoogleIcon />
             以 Google 帳號登入
@@ -242,7 +274,8 @@ function AuthCard() {
             {mode === "signin" && (
               <button
                 onClick={handleSignIn}
-                className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors"
+                disabled={isSubmitting}
+                className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 登入
               </button>
@@ -251,7 +284,8 @@ function AuthCard() {
             {mode === "register" && (
               <button
                 onClick={handleRegister}
-                className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors"
+                disabled={isSubmitting}
+                className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 註冊
               </button>
@@ -260,7 +294,8 @@ function AuthCard() {
             {mode === "reset" && (
               <button
                 onClick={handleReset}
-                className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors"
+                disabled={isSubmitting}
+                className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 寄送重設連結
               </button>
@@ -468,6 +503,21 @@ function SavedJiziCard({
   onDelete: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const deleteGroupRef = useRef<HTMLDivElement>(null);
+
+  // Reset confirmation state when the user clicks anywhere outside the
+  // delete-button group. We listen on mousedown so a click on the confirm
+  // button itself is handled before the outside-click resets state.
+  useEffect(() => {
+    if (!confirming) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!deleteGroupRef.current?.contains(e.target as Node)) {
+        setConfirming(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [confirming]);
 
   const handleDownload = () => {
     if (!item.thumbnail) return;
@@ -521,22 +571,23 @@ function SavedJiziCard({
           >
             編輯
           </button>
-          {confirming ? (
-            <button
-              onClick={() => { onDelete(); setConfirming(false); }}
-              className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white font-bold"
-            >
-              確認刪除
-            </button>
-          ) : (
-            <button
-              onClick={() => setConfirming(true)}
-              onBlur={() => setConfirming(false)}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--muted)] hover:border-red-400 hover:text-red-400 transition-colors"
-            >
-              刪除
-            </button>
-          )}
+          <div ref={deleteGroupRef}>
+            {confirming ? (
+              <button
+                onClick={() => { onDelete(); setConfirming(false); }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-red-500 text-white font-bold"
+              >
+                確認刪除
+              </button>
+            ) : (
+              <button
+                onClick={() => setConfirming(true)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--muted)] hover:border-red-400 hover:text-red-400 transition-colors"
+              >
+                刪除
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

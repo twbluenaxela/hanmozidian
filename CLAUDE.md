@@ -30,7 +30,9 @@
 | 集字工坊（最複雜頁面） | `app/jizi/page.tsx` |
 | 碑帖瀏覽 | `app/browse/page.tsx` |
 | 個人中心 | `app/me/page.tsx` |
-| 管理後台 | `app/admin/annotate/page.tsx` |
+| 管理後台（隊列） | `app/admin/page.tsx` |
+| 管理後台（標注畫布） | `app/admin/annotate/page.tsx` |
+| 管理後台架構文件 | `app/admin/AGENT.md` |
 | 搜尋 API | `app/api/search/route.ts` |
 | 集字 API | `app/api/jizi/route.ts` |
 | 字元圖片 API | `app/api/character/[char]/images/route.ts` |
@@ -145,6 +147,20 @@ const imageUrl = resolveImageUrl(image.imagePath);
 - R2 憑證（生產圖片儲存）
 - Firebase 設定（認證）
 - `USE_R2=false`（開發）/ `true`（生產）
+
+## 管理後台子系統
+
+管理標注系統有獨立的架構文件，包含完整的資料模型、API 參考、pipeline 操作和常見陷阱：
+
+**→ `app/admin/AGENT.md`**
+
+任何涉及 `app/admin/`、`app/api/admin/` 或 `pipeline/` 的工作，請先閱讀該文件。
+
+關鍵重點：
+- 標注資料儲存於 `pipeline/data/works_index.json`（**不是** SQLite DB）
+- 多頁捲軸需先執行 `python pipeline/fetch_pages.py` 才能抓取所有頁面 URL
+- Box 的字元是按**繪製順序**（非空間位置）分配的
+- `annotationDraft` 在 JSON 中是雙重編碼的字串
 
 ## 重要提醒
 

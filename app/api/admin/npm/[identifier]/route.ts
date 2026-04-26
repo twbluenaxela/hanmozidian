@@ -27,5 +27,6 @@ export async function GET(
     boxes = JSON.parse(fs.readFileSync(boxesFile, "utf-8"));
   }
 
-  return NextResponse.json({ work: entry, boxes });
+  const pageCount = entry.imagePages?.length ?? 1;
+  return NextResponse.json({ work: entry, boxes, pageCount });
 }

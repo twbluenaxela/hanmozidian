@@ -12,8 +12,12 @@ Output:
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
+
+# Disable onednn (MKL-DNN) which is unsupported on this system
+os.environ.setdefault("FLAGS_use_mkldnn", "0")
 
 import cv2
 import numpy as np
@@ -48,19 +52,38 @@ def save_index(index: dict):
 def strip_color_bar(img: np.ndarray) -> np.ndarray:
     """Remove the NPM color calibration strip at the bottom of the image."""
     h, w = img.shape[:2]
-    # Color bar is typically the bottom ~8% and contains saturated color patches
-    check_height = int(h * 0.12)
+    check_height = int(h * 0.15)
     bottom_strip = img[h - check_height:, :]
     hsv = cv2.cvtColor(bottom_strip, cv2.COLOR_BGR2HSV)
-    # High saturation pixels indicate color patches
+    gray = cv2.cvtColor(bottom_strip, cv2.COLOR_BGR2GRAY)
+
+    # Detect via saturation (color patches) or tonal gradient across columns
     high_sat = (hsv[:, :, 1] > 80).sum()
-    if high_sat > (check_height * w * 0.05):
-        # Find where the color bar starts by scanning upward
-        for row in range(h - 1, h - check_height - 1, -1):
-            row_hsv = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2HSV)
-            if (row_hsv[:, :, 1] > 80).sum() > w * 0.05:
-                return img[:row, :]
-    return img
+    col_means = np.mean(gray, axis=0).astype(float)
+    col_std = float(np.std(col_means))
+
+    has_color_bar = (
+        high_sat > (check_height * w * 0.05)  # saturated patches
+        or col_std > 30                         # tonal gradient
+    )
+    if not has_color_bar:
+        return img
+
+    # Walk the entire check region and record the HIGHEST row that looks like
+    # a color bar. The old code stopped at the first (lowest) high-sat row,
+    # leaving upper bar rows in the image — those were then mis-detected as text.
+    cutline = h
+    for row in range(h - 1, h - check_height - 1, -1):
+        row_hsv = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2HSV)
+        row_gray = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2GRAY)[0].astype(float)
+        is_bar_row = (
+            (row_hsv[:, :, 1] > 80).sum() > w * 0.05
+            or float(row_gray.std()) > 30
+        )
+        if is_bar_row:
+            cutline = row  # keep updating — we want the topmost bar row
+
+    return img[:cutline, :]
 
 
 def isolate_text_region(img: np.ndarray) -> np.ndarray:
@@ -127,22 +150,47 @@ def detect_columns(binary: np.ndarray) -> list[tuple[int, int]]:
     kernel = np.ones(5) / 5
     projection = np.convolve(projection, kernel, mode="same")
 
-    threshold = projection.mean() * 0.3
+    threshold = projection.mean() * 0.6
+    # Require this many consecutive low-ink columns before closing a column,
+    # preventing a single noisy stroke from splitting a real column.
+    MIN_GAP = 8
+    max_col_width = w // 4
+
     in_column = False
     columns = []
     start = 0
+    gap_count = 0
 
     for x in range(w):
-        if not in_column and projection[x] > threshold:
-            in_column = True
-            start = x
-        elif in_column and projection[x] <= threshold:
-            in_column = False
-            if x - start > 20:  # ignore tiny noise columns
-                columns.append((start, x))
+        if not in_column:
+            if projection[x] > threshold:
+                in_column = True
+                gap_count = 0
+                start = x
+        else:
+            if projection[x] <= threshold:
+                gap_count += 1
+                if gap_count >= MIN_GAP:
+                    col_end = x - gap_count + 1
+                    if col_end - start > 20:
+                        columns.append((start, col_end))
+                    in_column = False
+                    gap_count = 0
+            else:
+                gap_count = 0
+                if (x - start) > max_col_width:
+                    # Wide region — split at the local minimum within the window
+                    window = projection[start:x]
+                    split = int(np.argmin(window)) + start
+                    columns.append((start, split))
+                    start = split
 
     if in_column and w - start > 20:
         columns.append((start, w))
+
+    # Discard edge artifacts narrower than 3% of image width
+    min_col_w = max(15, w // 30)
+    columns = [(x1, x2) for x1, x2 in columns if min_col_w <= (x2 - x1) <= max_col_width]
 
     # Calligraphy is written right-to-left
     columns.reverse()
@@ -150,6 +198,28 @@ def detect_columns(binary: np.ndarray) -> list[tuple[int, int]]:
 
 
 # ── Character detection within a column ──────────────────────────────────────
+
+def _split_at_minimum(proj: np.ndarray, y1: int, y2: int) -> int:
+    """Return the y index of the local minimum within [y1, y2]."""
+    window = proj[y1:y2]
+    return int(np.argmin(window)) + y1
+
+
+def _merge_close_boxes(
+    boxes: list[tuple[int, int, int, int]], merge_gap: int = 6
+) -> list[tuple[int, int, int, int]]:
+    """Merge consecutive boxes whose vertical gap is ≤ merge_gap pixels."""
+    if not boxes:
+        return boxes
+    merged = [boxes[0]]
+    for bx, by, bw, bh in boxes[1:]:
+        px, py, pw, ph = merged[-1]
+        if by - (py + ph) <= merge_gap:
+            merged[-1] = (px, py, max(pw, bw), by + bh - py)
+        else:
+            merged.append((bx, by, bw, bh))
+    return merged
+
 
 def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int) -> list[tuple[int, int, int, int]]:
     """
@@ -159,12 +229,13 @@ def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int) -> list[tuple[i
     col = binary[:, x1:x2]
     h, w = col.shape
     projection = (col == 0).sum(axis=1).astype(float)
-    kernel = np.ones(3) / 3
+    # Wider kernel smooths hairline gaps between strokes of the same character
+    kernel = np.ones(5) / 5
     projection = np.convolve(projection, kernel, mode="same")
 
-    threshold = projection.mean() * 0.2
+    threshold = projection.mean() * 0.25
     in_char = False
-    boxes = []
+    raw_boxes: list[tuple[int, int, int, int]] = []
     start = 0
 
     for y in range(h):
@@ -174,13 +245,41 @@ def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int) -> list[tuple[i
         elif in_char and projection[y] <= threshold:
             in_char = False
             char_h = y - start
-            if char_h > 15:  # ignore tiny fragments
-                boxes.append((x1, start, x2 - x1, char_h))
+            if char_h > 15:
+                raw_boxes.append((x1, start, x2 - x1, char_h))
 
     if in_char and h - start > 15:
-        boxes.append((x1, start, x2 - x1, h - start))
+        raw_boxes.append((x1, start, x2 - x1, h - start))
+
+    # Split oversized boxes (seals, title text spanning multiple char heights)
+    # at the lowest-ink row within them
+    max_char_h = max(30, h // 3)
+    boxes: list[tuple[int, int, int, int]] = []
+    for bx, by, bw, bh in raw_boxes:
+        if bh > max_char_h:
+            split = _split_at_minimum(projection, by, by + bh)
+            if split - by > 15:
+                boxes.append((bx, by, bw, split - by))
+            if by + bh - split > 15:
+                boxes.append((bx, split, bw, by + bh - split))
+        else:
+            boxes.append((bx, by, bw, bh))
 
     return boxes
+
+
+# ── Global box filter ─────────────────────────────────────────────────────────
+
+def _is_plausible_char_box(b: dict) -> bool:
+    """Reject boxes with extreme aspect ratios or negligible area."""
+    bw, bh = b["w"], b["h"]
+    if bw * bh < 200:
+        return False
+    if bw / bh > 2.5:   # wider than tall — horizontal artifact
+        return False
+    if bh / bw > 5.0:   # very tall sliver — vertical stroke noise
+        return False
+    return True
 
 
 # ── PaddleOCR detection (optional enhancement) ───────────────────────────────
@@ -192,21 +291,23 @@ def detect_with_paddle(img_color: np.ndarray) -> list[dict]:
     """
     try:
         from paddleocr import PaddleOCR
-        ocr = PaddleOCR(use_textline_orientation=False, lang="ch")
-        result = ocr.ocr(img_color, cls=False)
+        ocr = PaddleOCR(use_textline_orientation=False, lang="ch", enable_mkldnn=False)
+        results = ocr.predict(img_color)
         boxes = []
-        if result and result[0]:
-            for line in result[0]:
-                pts = line[0]  # 4 corner points
+        for res in results:
+            polys = res.get("dt_polys", [])
+            scores = res.get("rec_scores", [])
+            for i, pts in enumerate(polys):
                 xs = [p[0] for p in pts]
                 ys = [p[1] for p in pts]
                 x, y = int(min(xs)), int(min(ys))
                 w = int(max(xs) - min(xs))
                 h = int(max(ys) - min(ys))
-                conf = float(line[1][1]) if line[1] else 0.5
+                conf = float(scores[i]) if i < len(scores) else 0.5
                 boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": conf, "source": "paddle"})
         return boxes
-    except ImportError:
+    except Exception as e:
+        print(f"  PaddleOCR unavailable ({type(e).__name__}: {e}), falling back to projection")
         return []
 
 
@@ -249,6 +350,12 @@ def process_work(identifier: str):
         chars = detect_chars_in_column(binary, x1, x2)
         for (x, y, w, h) in chars:
             projection_boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": 0.6, "source": "projection"})
+
+    # Filter out artifacts with extreme aspect ratios or tiny area
+    before = len(projection_boxes)
+    projection_boxes = [b for b in projection_boxes if _is_plausible_char_box(b)]
+    if len(projection_boxes) < before:
+        print(f"        Filtered {before - len(projection_boxes)} implausible boxes")
 
     # Step 3: PaddleOCR detection
     print("  [3/4] Running PaddleOCR detection...")

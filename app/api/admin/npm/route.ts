@@ -1,9 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { z } from "zod";
 
 const PIPELINE_DIR = path.resolve(process.cwd(), "pipeline", "data");
 const INDEX_FILE = path.join(PIPELINE_DIR, "works_index.json");
+
+const STATUSES = ["pending", "processing", "annotating", "done", "skipped"] as const;
+
+const PatchSchema = z
+  .object({
+    identifier: z.string().min(1).max(128),
+    status: z.enum(STATUSES).optional(),
+    annotationDraft: z.string().max(10_000).nullable().optional(),
+    shiwen: z.string().max(500).nullable().optional(),
+    styleSlug: z.string().max(100).nullable().optional(),
+    calligrapher: z.string().max(100).nullable().optional(),
+  })
+  .strict();
 
 function loadIndex(): Record<string, any> {
   if (!fs.existsSync(INDEX_FILE)) return {};
@@ -11,7 +25,20 @@ function loadIndex(): Record<string, any> {
 }
 
 function saveIndex(index: Record<string, any>) {
-  fs.writeFileSync(INDEX_FILE, JSON.stringify(index, null, 2), "utf-8");
+  // rename(2) is atomic on the same filesystem, so a crash mid-write leaves
+  // the existing index intact rather than truncated.
+  const tmp = `${INDEX_FILE}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(index, null, 2), "utf-8");
+  fs.renameSync(tmp, INDEX_FILE);
+}
+
+// Serializes PATCH load/modify/save sequences so concurrent requests don't
+// clobber each other's writes.
+let writeQueue: Promise<unknown> = Promise.resolve();
+function withWriteLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const next = writeQueue.then(() => fn());
+  writeQueue = next.catch(() => {});
+  return next;
 }
 
 // GET /api/admin/npm?status=pending&category=法書&q=蘭亭&page=1
@@ -20,7 +47,8 @@ export async function GET(req: NextRequest) {
   const statusFilter = searchParams.get("status");
   const categoryFilter = searchParams.get("category");
   const query = searchParams.get("q")?.trim().toLowerCase();
-  const page = parseInt(searchParams.get("page") || "1");
+  const pageRaw = parseInt(searchParams.get("page") || "1", 10);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
   const pageSize = 30;
 
   const index = loadIndex();
@@ -36,7 +64,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  works.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  works.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
 
   const total = works.length;
   const paginated = works.slice((page - 1) * pageSize, page * pageSize);
@@ -54,24 +82,34 @@ export async function GET(req: NextRequest) {
 
 // PATCH /api/admin/npm — update a work's status or draft
 export async function PATCH(req: NextRequest) {
-  const body = await req.json();
-  const { identifier, status, annotationDraft, shiwen, styleSlug, calligrapher } = body;
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid json" }, { status: 400 });
+  }
 
-  if (!identifier) return NextResponse.json({ error: "identifier required" }, { status: 400 });
+  const parsed = PatchSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
+  }
+  const { identifier, status, annotationDraft, shiwen, styleSlug, calligrapher } = parsed.data;
 
-  const index = loadIndex();
-  const entry = index[identifier];
-  if (!entry) return NextResponse.json({ error: "not found" }, { status: 404 });
+  return withWriteLock(() => {
+    const index = loadIndex();
+    const entry = index[identifier];
+    if (!entry) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  if (status !== undefined) entry.status = status;
-  if (annotationDraft !== undefined) entry.annotationDraft = annotationDraft;
-  if (shiwen !== undefined) entry.shiwen = shiwen;
-  if (styleSlug !== undefined) entry.styleSlug = styleSlug;
-  if (calligrapher !== undefined) entry.calligrapher = calligrapher;
-  entry.updatedAt = new Date().toISOString();
+    if (status !== undefined) entry.status = status;
+    if (annotationDraft !== undefined) entry.annotationDraft = annotationDraft;
+    if (shiwen !== undefined) entry.shiwen = shiwen;
+    if (styleSlug !== undefined) entry.styleSlug = styleSlug;
+    if (calligrapher !== undefined) entry.calligrapher = calligrapher;
+    entry.updatedAt = new Date().toISOString();
 
-  index[identifier] = entry;
-  saveIndex(index);
+    index[identifier] = entry;
+    saveIndex(index);
 
-  return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true });
+  });
 }

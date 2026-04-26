@@ -202,6 +202,7 @@ def _make_entry(rec: dict) -> dict:
         "desc": rec.get("desc", ""),
         "sourceUrl": rec.get("url", ""),
         "imageUrl": rec.get("imageUrl_m", ""),
+        "imagePages": [],
         "localImagePath": None,
         "status": "pending",
         "annotationDraft": None,
