@@ -160,6 +160,12 @@ def main():
         default="public/images",
         help="Source directory to upload (default: public/images)",
     )
+    parser.add_argument(
+        "--id",
+        dest="identifier",
+        default=None,
+        help="Upload only files for this work identifier (implies --overwrite, skips full R2 listing)",
+    )
     parser.add_argument("--db", default="data/shufazidian.db", help="SQLite database path")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be uploaded")
     parser.add_argument("--cleanup", action="store_true", help="Delete local files after upload")
@@ -167,17 +173,45 @@ def main():
     parser.add_argument("--workers", type=int, default=8, help="Number of parallel upload threads (default: 8)")
     args = parser.parse_args()
 
-    source_dir = Path(args.source)
-    if not source_dir.exists():
-        print(f"Error: source directory {source_dir} does not exist.")
-        sys.exit(1)
-
-    files = list(collect_files(source_dir))
-    if not files:
-        print(f"No image files found under {source_dir}")
-        sys.exit(0)
-
-    print(f"Found {len(files)} image(s) under {source_dir}")
+    # --id mode: targeted upload for a single work (always overwrites, no R2 listing needed)
+    if args.identifier:
+        index_path = Path(__file__).parent.parent / "pipeline" / "data" / "works_index.json"
+        if not index_path.exists():
+            print("Error: works_index.json not found")
+            sys.exit(1)
+        import json
+        with open(index_path) as f:
+            index = json.load(f)
+        work = index.get(args.identifier)
+        if not work:
+            print(f"Error: work '{args.identifier}' not found in index")
+            sys.exit(1)
+        style_slug = work.get("styleSlug")
+        if not style_slug:
+            print(f"Error: work '{args.identifier}' has no styleSlug")
+            sys.exit(1)
+        source_dir = Path(args.source) / style_slug
+        if not source_dir.exists():
+            print(f"Error: directory {source_dir} does not exist")
+            sys.exit(1)
+        marker = f"_{args.identifier}_"
+        all_files = list(collect_files(source_dir))
+        files = [(p, k) for p, k in all_files if marker in p.name]
+        if not files:
+            print(f"No files found for identifier '{args.identifier}' in {source_dir}")
+            sys.exit(0)
+        print(f"Found {len(files)} file(s) for '{args.identifier}' in {source_dir}")
+        args.overwrite = True  # targeted upload always overwrites
+    else:
+        source_dir = Path(args.source)
+        if not source_dir.exists():
+            print(f"Error: source directory {source_dir} does not exist.")
+            sys.exit(1)
+        files = list(collect_files(source_dir))
+        if not files:
+            print(f"No image files found under {source_dir}")
+            sys.exit(0)
+        print(f"Found {len(files)} image(s) under {source_dir}")
 
     if args.dry_run:
         print("\nDry run — no uploads will happen.")

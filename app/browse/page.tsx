@@ -21,6 +21,8 @@ interface GalleryImage {
   workId: number | null;
   styleName: string;
   styleSlug: string;
+  source: string | null;
+  description: string | null;
 }
 
 export default function BrowsePage() {
@@ -371,10 +373,15 @@ export default function BrowsePage() {
       {selectedImage && (
         <ImageModal
           imageUrl={selectedImage.imageUrl}
+          character={selectedImage.character}
           calligrapherName={selectedImage.calligrapherName}
           workName={selectedImage.workName}
           styleName={selectedImage.styleName}
+          source={selectedImage.source}
+          description={selectedImage.description}
+          imagePath={selectedImage.imageUrl}
           onClose={() => setSelectedImage(null)}
+          onNavigate={() => router.push(`/character/${encodeURIComponent(selectedImage.character)}`)}
         />
       )}
     </div>

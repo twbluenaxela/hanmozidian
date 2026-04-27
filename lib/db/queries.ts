@@ -344,6 +344,8 @@ export function getGalleryImages(opts: {
       workId: calligraphyImages.workId,
       styleName: scriptStyles.nameZh,
       styleSlug: scriptStyles.slug,
+      source: calligraphyImages.source,
+      description: calligraphyImages.description,
     })
     .from(calligraphyImages)
     .innerJoin(characters, eq(calligraphyImages.characterId, characters.id))
@@ -397,6 +399,8 @@ export function getGalleryImagesCorpusOrdered(opts: {
       workId: calligraphyImages.workId,
       styleName: scriptStyles.nameZh,
       styleSlug: scriptStyles.slug,
+      source: calligraphyImages.source,
+      description: calligraphyImages.description,
     })
     .from(calligraphyImages)
     .innerJoin(characters, eq(calligraphyImages.characterId, characters.id))

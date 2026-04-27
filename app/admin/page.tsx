@@ -95,12 +95,20 @@ export default function AdminPage() {
             <h1 className="font-display text-2xl text-[var(--accent)]">碑帖管理</h1>
             <p className="text-sm text-[var(--muted)] mt-1">NPM 故宮數位典藏 · 標注工作台</p>
           </div>
-          <button
-            onClick={() => router.push("/")}
-            className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
-          >
-            ← 返回首頁
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => router.push("/admin/export")}
+              className="px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
+            >
+              匯出 →
+            </button>
+            <button
+              onClick={() => router.push("/")}
+              className="text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
+            >
+              ← 返回首頁
+            </button>
+          </div>
         </div>
 
         {/* Search */}
