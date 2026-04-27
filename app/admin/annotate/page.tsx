@@ -53,7 +53,22 @@ function makeId() {
 }
 
 function sortedGlobalOrder(boxes: Box[]): Box[] {
-  return [...boxes].sort((a, b) => a.page - b.page);
+  return [...boxes].sort((a, b) => {
+    // Extract the timestamp (Date.now) from the ID
+    const timeA = parseInt(a.id.split('-')[1], 10);
+    const timeB = parseInt(b.id.split('-')[1], 10);
+    
+    // If they were created at the exact same millisecond (like during applyBoxData),
+    // use the sequence number (_idSeq) as a tie-breaker.
+    if (timeA === timeB) {
+      const seqA = parseInt(a.id.split('-')[2], 10);
+      const seqB = parseInt(b.id.split('-')[2], 10);
+      return seqA - seqB;
+    }
+    
+    // Otherwise, sort by the time they were drawn
+    return timeA - timeB;
+  });
 }
 
 function AnnotateInner() {
@@ -62,6 +77,7 @@ function AnnotateInner() {
   const identifier = searchParams.get("id") || "";
 
   const [renderScale, setRenderScale] = useState(1);
+
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [work, setWork] = useState<WorkData | null>(null);
@@ -93,6 +109,12 @@ function AnnotateInner() {
   const [pageCount, setPageCount] = useState(1);
   const imgRef = useRef<HTMLImageElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+
+
+  // If the work is "backward", create [11, 10, 9... 0]
+  // If "forward", create [0, 1, 2, 3... 11]
+  const pageSequence = Array.from({ length: pageCount }, (_, i) => i).reverse(); 
+  // Note: use .reverse() only if the specific work is traditional style
 
   // Lasso selection
   const [lasso, setLasso] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
