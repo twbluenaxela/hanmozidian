@@ -20,6 +20,15 @@ import JiziPage from "@/app/jizi/page";
 
 jest.mock("html-to-image", () => ({ toPng: jest.fn() }));
 
+// ── Mock Firebase so tests run without real credentials ──────────────────────
+jest.mock("@/lib/firebase", () => ({ auth: {}, db: {} }));
+jest.mock("firebase/firestore", () => ({
+  doc: jest.fn(), setDoc: jest.fn(), deleteDoc: jest.fn(),
+  onSnapshot: jest.fn(() => () => {}), collection: jest.fn(),
+  serverTimestamp: jest.fn(), getDocs: jest.fn(), query: jest.fn(), orderBy: jest.fn(),
+}));
+jest.mock("@/lib/auth-context", () => ({ useAuth: () => ({ user: null, loading: false }) }));
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 function makeCharResult(char: string, id: number) {
@@ -170,19 +179,17 @@ describe("50-character input", () => {
 // ── grid size slider changes cell dimensions ──────────────────────────────────
 
 describe("grid size adjustment", () => {
-  it("all cells update to the new gridSize when the slider changes", async () => {
+  it("all cells update to the new gridSize when the 特大 button is clicked", async () => {
     await renderWithNChars(5);
 
-    const slider = screen
-      .getByText(/格子:/)
-      .closest("div")!
-      .querySelector("input[type=range]")!;
-
-    fireEvent.change(slider, { target: { value: "180" } });
+    // Grid size is controlled by discrete buttons (小/中/大/特大).
+    // 特大 sets gridSize to 200. Both sidebars render the button; click the first.
+    const btns = screen.getAllByRole("button", { name: "特大" });
+    fireEvent.click(btns[0]);
 
     await waitFor(() => {
       screen.getAllByTestId("char-cell").forEach((cell) => {
-        expect(cell).toHaveStyle({ width: "180px", height: "180px" });
+        expect(cell).toHaveStyle({ width: "200px", height: "200px" });
       });
     });
   });

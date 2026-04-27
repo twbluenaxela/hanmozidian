@@ -14,6 +14,15 @@ import JiziPage from "@/app/jizi/page";
 // ── Mock html-to-image (export feature, not under test) ─────────────────────
 jest.mock("html-to-image", () => ({ toPng: jest.fn() }));
 
+// ── Mock Firebase so tests run without real credentials ──────────────────────
+jest.mock("@/lib/firebase", () => ({ auth: {}, db: {} }));
+jest.mock("firebase/firestore", () => ({
+  doc: jest.fn(), setDoc: jest.fn(), deleteDoc: jest.fn(),
+  onSnapshot: jest.fn(() => () => {}), collection: jest.fn(),
+  serverTimestamp: jest.fn(), getDocs: jest.fn(), query: jest.fn(), orderBy: jest.fn(),
+}));
+jest.mock("@/lib/auth-context", () => ({ useAuth: () => ({ user: null, loading: false }) }));
+
 // ── Shared fixture data ──────────────────────────────────────────────────────
 const IMAGE_1 = { id: 1, imageUrl: "/images/kai/1.png" };
 const IMAGE_2 = { id: 2, imageUrl: "/images/kai/2.png" };
@@ -153,25 +162,26 @@ describe("JiziPage – gallery alternative selection", () => {
   it("opens the gallery in the sidebar when a character with multiple images is clicked", async () => {
     await renderAndSelectChar();
     await waitFor(() => {
-      expect(screen.getByText("替換版本")).toBeInTheDocument();
+      expect(screen.getAllByText("替換版本").length).toBeGreaterThan(0);
     });
   });
 
   it("gallery shows one thumbnail per available image", async () => {
     await renderAndSelectChar();
-    await waitFor(() => screen.getByText("替換版本"));
+    await waitFor(() => screen.getAllByText("替換版本"));
 
-    const gallery = screen.getByText("替換版本").closest("div")!;
-    const thumbnails = within(gallery).getAllByRole("img");
+    // Thumbnails have alt="" (presentational), so query via querySelectorAll
+    const gallery = screen.getAllByText("替換版本")[0].closest("div")!;
+    const thumbnails = gallery.querySelectorAll("img");
     expect(thumbnails).toHaveLength(3);
   });
 
   it("clicking an alternative updates the canvas to show that image", async () => {
     await renderAndSelectChar();
-    await waitFor(() => screen.getByText("替換版本"));
+    await waitFor(() => screen.getAllByText("替換版本"));
 
-    const gallery = screen.getByText("替換版本").closest("div")!;
-    const thumbnails = within(gallery).getAllByRole("img");
+    const gallery = screen.getAllByText("替換版本")[0].closest("div")!;
+    const thumbnails = gallery.querySelectorAll("img");
 
     // Click the second alternative (IMAGE_2)
     fireEvent.click(thumbnails[1].closest("button")!);
@@ -184,10 +194,10 @@ describe("JiziPage – gallery alternative selection", () => {
 
   it("clicking the third alternative updates the canvas to show that image", async () => {
     await renderAndSelectChar();
-    await waitFor(() => screen.getByText("替換版本"));
+    await waitFor(() => screen.getAllByText("替換版本"));
 
-    const gallery = screen.getByText("替換版本").closest("div")!;
-    const thumbnails = within(gallery).getAllByRole("img");
+    const gallery = screen.getAllByText("替換版本")[0].closest("div")!;
+    const thumbnails = gallery.querySelectorAll("img");
 
     fireEvent.click(thumbnails[2].closest("button")!);
 
@@ -207,17 +217,17 @@ describe("JiziPage – gallery alternative selection", () => {
     // Select character and pick alternative 3
     const charImg = screen.getByAltText("永");
     fireEvent.click(charImg.closest('[class*="cursor-pointer"]')!);
-    await waitFor(() => screen.getByText("替換版本"));
+    await waitFor(() => screen.getAllByText("替換版本"));
 
-    const gallery = screen.getByText("替換版本").closest("div")!;
-    fireEvent.click(within(gallery).getAllByRole("img")[2].closest("button")!);
+    const gallery = screen.getAllByText("替換版本")[0].closest("div")!;
+    fireEvent.click(gallery.querySelectorAll("img")[2].closest("button")!);
     await waitFor(() =>
       expect(screen.getByAltText("永").getAttribute("src")).toContain(IMAGE_3.imageUrl)
     );
 
     // Now simulate a style switch returning only 1 image (id 1) — IMAGE_3 is gone
     global.fetch = makeFetch([{ ...characterWithThreeImages, images: [IMAGE_1] }]);
-    const styleBtn = screen.getByRole("button", { name: "行書" });
+    const styleBtn = screen.getAllByRole("button", { name: "行書" })[0];
     fireEvent.click(styleBtn);
     await act(async () => { jest.advanceTimersByTime(400); });
 

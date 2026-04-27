@@ -8,6 +8,9 @@ type Status = "loading" | "loaded" | "failed";
 // component re-render or filter change that didn't actually change the URL.
 const loadedUrls = new Set<string>();
 
+/** Exposed only for test isolation — clears the session cache between tests. */
+export function clearImageCache() { loadedUrls.clear(); }
+
 function baseUrl(imageUrl: string, queryParam: string) {
   if (!imageUrl) return "";
   return `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}${queryParam}`;

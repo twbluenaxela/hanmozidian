@@ -13,7 +13,9 @@ Type a phrase, pick a script style, and compose a visual reference board:
 - **Paper styles**: Transparent, white, raw xuan paper, gold paper
 - **Character effects**: Mi-zi grid, Jiu-gong grid, invert (rubbing style), wireframe, background removal
 - **Borders**: Square or circular, customizable color and width
+- **Filter**: Restrict character images to a specific calligrapher or famous work
 - **Export**: Save as high-resolution PNG
+- **Copy**: Copy the composition as an image to the clipboard
 
 ### 碑帖瀏覽 (Browse by Work/Calligrapher)
 Browse all characters from a specific calligrapher or famous work, with infinite scroll and lightbox viewing.
@@ -208,7 +210,9 @@ shufazidian/
 ├── app/                          # Next.js App Router
 │   ├── page.tsx                  # Home / 字典 mode (search)
 │   ├── character/[char]/page.tsx # Character detail (style tabs + grid)
-│   ├── jizi/page.tsx             # 集字 mode (phrase composition)
+│   ├── jizi/
+│   │   ├── page.tsx              # 集字 mode (phrase composition)
+│   │   └── AGENT.md              # Architecture notes for this subsystem
 │   ├── browse/page.tsx           # 碑帖瀏覽 (by calligrapher/work)
 │   ├── me/page.tsx               # 個人中心 (favorites + saved jizi)
 │   ├── admin/                    # 管理後台 (NPM annotation)

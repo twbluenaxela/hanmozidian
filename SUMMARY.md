@@ -187,7 +187,9 @@ app/
 
 ### 6.3 集字工坊 (`app/jizi/page.tsx`) — 最複雜的頁面
 
-這是專案中最複雜的頁面（約 575 行），功能包括：
+> 詳細架構說明請見 `app/jizi/AGENT.md`。
+
+這是專案中最複雜的頁面（約 615 行），功能包括：
 
 1. **文字輸入**：使用者輸入中文詞句
 2. **書體選擇**：六體擇一
@@ -202,14 +204,15 @@ app/
    - 線框模式
    - 背景去背
 6. **邊框**：方形或圓形，可調顏色與寬度
-7. **匯出**：使用 `html-to-image` 生成高解析度 PNG
+7. **篩選**：按書家或碑帖作品限定圖片來源
+8. **匯出 / 複製**：使用 `html-to-image` 生成高解析度 PNG，或複製到剪貼簿
 
 ### 6.4 狀態管理
 
 - **認證**：`lib/auth-context.tsx` — Firebase Auth Context，提供 `user`, `loading`, `signIn`, `signOut`
 - **收藏**：`lib/favorites.ts` — 與 Firestore 同步的收藏功能
 - **儲存集字**：`lib/savedJizi.ts` — 儲存/載入集字排版設定
-- **圖片重試**：`lib/useImageRetry.ts` — 圖片載入失敗時自動重試
+- **圖片重試**：`lib/useImageRetry.ts` — 圖片載入失敗時自動重試，內含 session 級 URL 快取避免重複請求
 
 ---
 
@@ -401,4 +404,4 @@ npm run test:watch # 監看模式
 
 ---
 
-*最後更新：2025-04-24*
+*最後更新：2026-04-27*
