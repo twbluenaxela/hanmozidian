@@ -68,3 +68,6 @@ venv/
 
 # NPM annotation pipeline — local dev tool only, not for production
 /pipeline/
+
+.wrangler/
+.wrangler/
