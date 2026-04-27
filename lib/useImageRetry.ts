@@ -3,6 +3,16 @@ import { useState, useEffect, useRef } from "react";
 
 type Status = "loading" | "loaded" | "failed";
 
+// Session-scoped cache of successfully loaded base URLs (imageUrl?queryParam).
+// Prevents re-showing skeleton when the same image appears again after a
+// component re-render or filter change that didn't actually change the URL.
+const loadedUrls = new Set<string>();
+
+function baseUrl(imageUrl: string, queryParam: string) {
+  if (!imageUrl) return "";
+  return `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}${queryParam}`;
+}
+
 /**
  * Auto-retries once with a cache-buster to absorb transient R2/network
  * drops on mobile. Callers wire `onLoad`/`onError` to an <img> and read
@@ -10,15 +20,22 @@ type Status = "loading" | "loaded" | "failed";
  * specific URLs on separate CDN cache entries (e.g. "cors=1" vs "gallery=1").
  */
 export function useImageRetry(imageUrl: string, queryParam: string) {
-  const [status, setStatus] = useState<Status>("loading");
+  const cached = imageUrl ? loadedUrls.has(baseUrl(imageUrl, queryParam)) : false;
+  const [status, setStatus] = useState<Status>(cached ? "loaded" : "loading");
   const [retryToken, setRetryToken] = useState(0);
   const attemptRef = useRef(0);
 
   useEffect(() => {
+    if (imageUrl && loadedUrls.has(baseUrl(imageUrl, queryParam))) {
+      setStatus("loaded");
+      setRetryToken(0);
+      attemptRef.current = 0;
+      return;
+    }
     setStatus("loading");
     setRetryToken(0);
     attemptRef.current = 0;
-  }, [imageUrl]);
+  }, [imageUrl, queryParam]);
 
   const onError = () => {
     if (attemptRef.current < 1) {
@@ -29,10 +46,13 @@ export function useImageRetry(imageUrl: string, queryParam: string) {
     }
   };
 
-  const onLoad = () => setStatus("loaded");
+  const onLoad = () => {
+    loadedUrls.add(baseUrl(imageUrl, queryParam));
+    setStatus("loaded");
+  };
 
   const src = imageUrl
-    ? `${imageUrl}${imageUrl.includes("?") ? "&" : "?"}${queryParam}${retryToken > 0 ? `&r=${retryToken}` : ""}`
+    ? `${baseUrl(imageUrl, queryParam)}${retryToken > 0 ? `&r=${retryToken}` : ""}`
     : "";
 
   return { status, src, onLoad, onError };

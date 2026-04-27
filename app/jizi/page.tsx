@@ -109,8 +109,10 @@ export default function JiziPage() {
   const [loading, setLoading] = useState(false);
   const [paper, setPaper] = useState(PAPERS[0]);
   const [isExporting, setIsExporting] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [shareMessage, setShareMessage] = useState<string | null>(null);
 
   const [orientation, setOrientation] = useState<"horizontal" | "vertical">("horizontal");
   const [gridSize, setGridSize] = useState(120);
@@ -190,6 +192,42 @@ export default function JiziPage() {
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(e.target.value.replace(/[\u200B-\u200D\uFEFF]/g, ""));
+  };
+
+  const handleShare = async () => {
+    if (!canvasRef.current) return;
+    setIsSharing(true);
+    const prevSelection = [...activeIndices];
+    setActiveIndices([]);
+    setSheetOpen(false);
+    setPickerOpen(false);
+    try {
+      await new Promise((r) => setTimeout(r, 300));
+      const dataUrl = await toPng(canvasRef.current, {
+        pixelRatio: 3,
+        backgroundColor: paper.color === "transparent" ? undefined : paper.color,
+        width: canvasRef.current.scrollWidth,
+        height: canvasRef.current.scrollHeight,
+        style: { transform: "none" },
+      });
+      const blob = await (await fetch(dataUrl)).blob();
+      if (navigator.clipboard?.write) {
+        await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+        setShareMessage("已複製");
+        setTimeout(() => setShareMessage(null), 2000);
+      } else {
+        setShareMessage("不支援複製");
+        setTimeout(() => setShareMessage(null), 2000);
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        alert("分享失敗");
+        console.error(err);
+      }
+    } finally {
+      setActiveIndices(prevSelection);
+      setIsSharing(false);
+    }
   };
 
   const handleExport = async () => {
@@ -444,7 +482,15 @@ export default function JiziPage() {
                 )}
               </div>
             )}
-            <button onClick={handleExport} disabled={isExporting} className="bg-[var(--accent)] text-[var(--background)] px-4 py-1.5 rounded-xl font-bold text-sm shadow-md hover:scale-105 transition-all disabled:opacity-60">
+            <div className="relative">
+              <button onClick={handleShare} disabled={isSharing || isExporting} className="border border-[var(--accent)] text-[var(--accent)] px-3 py-1.5 rounded-xl font-bold text-sm hover:scale-105 transition-all disabled:opacity-40">
+                {isSharing ? "複製中..." : "分享"}
+              </button>
+              {shareMessage && (
+                <span className="absolute -bottom-5 right-0 text-[10px] whitespace-nowrap text-green-500">{shareMessage}</span>
+              )}
+            </div>
+            <button onClick={handleExport} disabled={isExporting || isSharing} className="bg-[var(--accent)] text-[var(--background)] px-4 py-1.5 rounded-xl font-bold text-sm shadow-md hover:scale-105 transition-all disabled:opacity-60">
               {isExporting ? "匯出中..." : "匯出作品"}
             </button>
           </div>
@@ -500,7 +546,7 @@ export default function JiziPage() {
               return (
                 <div
                   data-testid="char-cell"
-                  key={`${idx}-${currentImg?.id || "empty"}`}
+                  key={`${idx}-${res.character}`}
                   onClick={(e) => handleCharClick(idx, e)}
                   style={{ writingMode: "horizontal-tb", width: gridSize, height: gridSize, transform: `translate(${s.offsetX}px, ${s.offsetY}px) scale(${s.scale}) rotate(${s.rotation}deg)` }}
                   className={`relative cursor-pointer transition-all duration-200 flex items-center justify-center shrink-0 ${isSelected ? "z-10" : "opacity-95"}`}
