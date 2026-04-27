@@ -8,6 +8,7 @@ type WorkStatus = "pending" | "processing" | "annotating" | "done" | "skipped";
 interface Work {
   identifier: string;
   name: string;
+  displayName?: string | null;
   category: string;
   calligrapher: string | null;
   era: string;
@@ -184,7 +185,10 @@ export default function AdminPage() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-display text-base truncate">{w.name}</p>
+                  <p className="font-display text-base truncate">{w.displayName || w.name}</p>
+                  {w.displayName && (
+                    <p className="text-xs text-[var(--muted)] truncate">{w.name}</p>
+                  )}
                   <p className="text-xs text-[var(--muted)] mt-0.5">
                     {w.identifier}
                     {w.calligrapher && <span className="ml-2">· {w.calligrapher}</span>}

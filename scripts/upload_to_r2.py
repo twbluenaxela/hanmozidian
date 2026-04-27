@@ -195,13 +195,15 @@ def main():
     # Check existing keys if we should skip them
     existing_keys = set()
     if not args.overwrite:
-        print("Listing existing R2 objects (to skip already-uploaded files)...")
         paginator = client.get_paginator("list_objects_v2")
         try:
-            for page in paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix="images/"):
-                for obj in page.get("Contents", []) or []:
-                    existing_keys.add(obj["Key"])
-            print(f"  {len(existing_keys)} object(s) already in R2.")
+            with tqdm(desc="Listing R2 objects", unit=" obj", dynamic_ncols=True) as bar:
+                for page in paginator.paginate(Bucket=R2_BUCKET_NAME, Prefix="images/"):
+                    batch = page.get("Contents") or []
+                    for obj in batch:
+                        existing_keys.add(obj["Key"])
+                    bar.update(len(batch))
+            print(f"  {len(existing_keys):,} object(s) already in R2.")
         except ClientError as e:
             print(f"  Warning: could not list bucket: {e}")
 

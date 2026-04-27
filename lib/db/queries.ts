@@ -106,6 +106,7 @@ export function getImages(opts: {
       workId: calligraphyImages.workId,
       styleName: scriptStyles.nameZh,
       styleSlug: scriptStyles.slug,
+      source: calligraphyImages.source,
     })
     .from(calligraphyImages)
     .leftJoin(calligraphers, eq(calligraphyImages.calligrapherId, calligraphers.id))

@@ -18,6 +18,8 @@ interface Box {
 interface WorkData {
   identifier: string;
   name: string;
+  displayName?: string | null;
+  sourceBlurb?: string | null;
   category: string;
   calligrapher: string | null;
   era: string;
@@ -35,12 +37,21 @@ interface BoxesData {
 
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
+const STYLE_SLUGS = [
+  { slug: "kai",   label: "楷" },
+  { slug: "xing",  label: "行" },
+  { slug: "cao",   label: "草" },
+  { slug: "li",    label: "隸" },
+  { slug: "zhuan", label: "篆" },
+  { slug: "jin",   label: "金" },
+  { slug: "unknown", label: "未知" },
+];
+
 let _idSeq = 0;
 function makeId() {
   return `box-${Date.now()}-${++_idSeq}`;
 }
 
-// Sort boxes globally by page only — within each page, draw order (array order) is preserved
 function sortedGlobalOrder(boxes: Box[]): Box[] {
   return [...boxes].sort((a, b) => a.page - b.page);
 }
@@ -61,6 +72,8 @@ function AnnotateInner() {
   const [shiwenInput, setShiwenInput] = useState("");
   const [calligrapherInput, setCalligrapherInput] = useState("");
   const [styleInput, setStyleInput] = useState("");
+  const [displayNameInput, setDisplayNameInput] = useState("");
+  const [sourceBlurbInput, setSourceBlurbInput] = useState("");
   const [drawMode, setDrawMode] = useState(false);
   const [drawing, setDrawing] = useState<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
@@ -81,6 +94,30 @@ function AnnotateInner() {
   const imgRef = useRef<HTMLImageElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
+  // Lasso selection
+  const [lasso, setLasso] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const lassoRef = useRef<{
+    startNX: number; startNY: number;
+    canvasLeft: number; canvasTop: number;
+    scale: number;
+    moved: boolean;
+  } | null>(null);
+  // Stable refs so handleMouseUp can read boxes/currentPage without re-registering
+  const boxesRef = useRef(boxes);
+  const currentPageRef = useRef(currentPage);
+  const lassoDisplayRef = useRef(lasso);
+  const drawingRef = useRef(drawing);
+  const zoomRef = useRef(zoom);
+  const renderScaleRef = useRef(renderScale);
+  const shiwenCharsRef = useRef(shiwenChars);
+  useEffect(() => { boxesRef.current = boxes; }, [boxes]);
+  useEffect(() => { currentPageRef.current = currentPage; }, [currentPage]);
+  useEffect(() => { lassoDisplayRef.current = lasso; }, [lasso]);
+  useEffect(() => { drawingRef.current = drawing; }, [drawing]);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+  useEffect(() => { renderScaleRef.current = renderScale; }, [renderScale]);
+  useEffect(() => { shiwenCharsRef.current = shiwenChars; }, [shiwenChars]);
+
   // Load work data
   useEffect(() => {
     if (!identifier) return;
@@ -90,11 +127,12 @@ function AnnotateInner() {
         setWork(work);
         setCalligrapherInput(work.calligrapher || "");
         setStyleInput(work.styleSlug || "");
+        setDisplayNameInput(work.displayName || "");
+        setSourceBlurbInput(work.sourceBlurb || "");
         setPageCount(pc ?? 1);
 
         if (work.annotationDraft) {
           const draft = JSON.parse(work.annotationDraft);
-          // Backward compat: old drafts have no page field on boxes
           const migratedBoxes = (draft.boxes || []).map((b: any) => ({ ...b, page: b.page ?? 0 }));
           setBoxes(migratedBoxes);
           setShiwenChars(draft.shiwenChars || []);
@@ -183,7 +221,6 @@ function AnnotateInner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedIds]);
 
-  // Assign chars based on global sort order (page → y → x)
   const applyShiwen = useCallback((chars: string[]) => {
     setShiwenChars(chars);
     setBoxes((prev) => {
@@ -207,10 +244,8 @@ function AnnotateInner() {
       setSelectedIds(new Set([id]));
       setDragging({ id, startX: e.clientX, startY: e.clientY, origX: boxes.find(b => b.id === id)!.x, origY: boxes.find(b => b.id === id)!.y });
     }
-    // shift+drag not supported — shift clicks are handled in onClick
   };
 
-  // Resize handle mouse down
   const handleResizeMouseDown = (e: React.MouseEvent, id: string, handle: ResizeHandle) => {
     if (drawMode) return;
     e.stopPropagation();
@@ -241,15 +276,91 @@ function AnnotateInner() {
       forceUpdate(n => n + 1);
       return;
     }
-    if (!dragging) return;
-    const dx = (e.clientX - dragging.startX) / scale;
-    const dy = (e.clientY - dragging.startY) / scale;
-    setBoxes((prev) => prev.map((b) => b.id === dragging.id ? { ...b, x: dragging.origX + dx, y: dragging.origY + dy } : b));
+    if (dragging) {
+      const dx = (e.clientX - dragging.startX) / scale;
+      const dy = (e.clientY - dragging.startY) / scale;
+      setBoxes((prev) => prev.map((b) => b.id === dragging.id ? { ...b, x: dragging.origX + dx, y: dragging.origY + dy } : b));
+      return;
+    }
+    // Lasso: update rect as mouse moves
+    if (lassoRef.current) {
+      const { startNX, startNY, canvasLeft, canvasTop, scale: s } = lassoRef.current;
+      const nx = (e.clientX - canvasLeft) / s;
+      const ny = (e.clientY - canvasTop) / s;
+      const screenDist = Math.abs(e.clientX - (canvasLeft + startNX * s)) + Math.abs(e.clientY - (canvasTop + startNY * s));
+      if (screenDist > 4) {
+        lassoRef.current.moved = true;
+        setLasso({
+          x: Math.min(startNX, nx),
+          y: Math.min(startNY, ny),
+          w: Math.abs(nx - startNX),
+          h: Math.abs(ny - startNY),
+        });
+      }
+    }
   }, [dragging, scale]);
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e: MouseEvent) => {
     resizingRef.current = null;
     setDragging(null);
+
+    // Finish drawing a new box — works even when mouse released outside canvas
+    if (drawingRef.current && canvasRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      const z = zoomRef.current;
+      const rs = renderScaleRef.current;
+      const x2 = (e.clientX - rect.left) / (z * rs);
+      const y2 = (e.clientY - rect.top) / (z * rs);
+      const start = drawingRef.current;
+      const newBox: Box = {
+        id: makeId(),
+        x: Math.min(start.x, x2),
+        y: Math.min(start.y, y2),
+        w: Math.abs(x2 - start.x),
+        h: Math.abs(y2 - start.y),
+        confidence: 1,
+        source: "manual",
+        char: "",
+        page: currentPageRef.current,
+      };
+      setDrawing(null);
+      drawingRef.current = null;
+      if (newBox.w > 5 && newBox.h > 5) {
+        const chars = shiwenCharsRef.current;
+        setBoxes((prev) => {
+          const next = [...prev, newBox];
+          const ordered = sortedGlobalOrder(next);
+          const charMap = new Map(ordered.map((b, i) => [b.id, chars[i] || ""]));
+          return next.map((b) => ({ ...b, char: charMap.get(b.id) || "" }));
+        });
+      }
+      return;
+    }
+
+    if (lassoRef.current) {
+      const currentLasso = lassoDisplayRef.current;
+      if (lassoRef.current.moved && currentLasso && currentLasso.w > 4 && currentLasso.h > 4) {
+        // Select all boxes on this page that intersect the lasso rect
+        const newSelected = new Set<string>();
+        for (const box of boxesRef.current) {
+          if (box.page !== currentPageRef.current) continue;
+          if (
+            box.x < currentLasso.x + currentLasso.w &&
+            box.x + box.w > currentLasso.x &&
+            box.y < currentLasso.y + currentLasso.h &&
+            box.y + box.h > currentLasso.y
+          ) {
+            newSelected.add(box.id);
+          }
+        }
+        setSelectedIds(newSelected);
+      } else {
+        // Plain click on background — clear selection
+        setSelectedIds(new Set());
+      }
+      lassoRef.current = null;
+      setLasso(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -261,56 +372,29 @@ function AnnotateInner() {
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Draw new box
+  // Draw new box / start lasso
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (!drawMode) {
-      setSelectedIds(new Set());
-      return;
-    }
-    if (!canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    setDrawing({
-      x: (e.clientX - rect.left) / (zoom * renderScale),
-      y: (e.clientY - rect.top) / (zoom * renderScale),
-    });
-  };
-
-  const handleCanvasMouseUp = (e: React.MouseEvent) => {
-    if (!drawing || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x2 = (e.clientX - rect.left) / (zoom * renderScale);
-    const y2 = (e.clientY - rect.top) / (zoom * renderScale);
-    const newBox: Box = {
-      id: makeId(),
-      x: Math.min(drawing.x, x2),
-      y: Math.min(drawing.y, y2),
-      w: Math.abs(x2 - drawing.x),
-      h: Math.abs(y2 - drawing.y),
-      confidence: 1,
-      source: "manual",
-      char: "",
-      page: currentPage,
-    };
-    if (newBox.w > 5 && newBox.h > 5) {
-      setBoxes((prev) => {
-        const next = [...prev, newBox];
-        // Re-apply shiwen to account for new box in global order
-        const ordered = sortedGlobalOrder(next);
-        const charMap = new Map(ordered.map((b, i) => [b.id, shiwenChars[i] || ""]));
-        return next.map((b) => ({ ...b, char: charMap.get(b.id) || "" }));
+    if (drawMode) {
+      if (!canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      setDrawing({
+        x: (e.clientX - rect.left) / (zoom * renderScale),
+        y: (e.clientY - rect.top) / (zoom * renderScale),
       });
+    } else {
+      // Start lasso tracking
+      if (!canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const s = zoom * renderScale;
+      lassoRef.current = {
+        startNX: (e.clientX - rect.left) / s,
+        startNY: (e.clientY - rect.top) / s,
+        canvasLeft: rect.left,
+        canvasTop: rect.top,
+        scale: s,
+        moved: false,
+      };
     }
-    setDrawing(null);
-  };
-
-  const deleteBox = (id: string) => {
-    setBoxes((prev) => {
-      const next = prev.filter((b) => b.id !== id);
-      const ordered = sortedGlobalOrder(next);
-      const charMap = new Map(ordered.map((b, i) => [b.id, shiwenChars[i] || ""]));
-      return next.map((b) => ({ ...b, char: charMap.get(b.id) || "" }));
-    });
-    setSelectedIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
   };
 
   const deleteSelected = () => {
@@ -344,6 +428,8 @@ function AnnotateInner() {
           shiwen: shiwenInput,
           calligrapher: calligrapherInput,
           styleSlug: styleInput,
+          displayName: displayNameInput || null,
+          sourceBlurb: sourceBlurbInput || null,
         }),
       });
       setWork(prev => prev ? ({ ...prev, status }) : null);
@@ -354,7 +440,7 @@ function AnnotateInner() {
       setSaving(false);
       setTimeout(() => setSaveMsg(""), 3000);
     }
-  }, [work, boxes, shiwenChars, imageSize, shiwenInput, calligrapherInput, styleInput]);
+  }, [work, boxes, shiwenChars, imageSize, shiwenInput, calligrapherInput, styleInput, displayNameInput, sourceBlurbInput]);
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
@@ -363,18 +449,15 @@ function AnnotateInner() {
     return () => clearInterval(timer);
   }, [saveDraft, work]);
 
-  // Global counts (all pages)
   const totalBoxes = boxes.length;
   const countMatch = totalBoxes === shiwenChars.length;
-  // Single selected box (for info panel / resize handles)
-  const singleSelectedBox = selectedIds.size === 1 ? boxes.find((b) => b.id === [...selectedIds][0]) : undefined;
+  const canFinish = countMatch && styleInput.trim().length > 0;
 
-  // Boxes on current page, with their global char index
+  const singleSelectedBox = selectedIds.size === 1 ? boxes.find((b) => b.id === [...selectedIds][0]) : undefined;
   const globalOrdered = sortedGlobalOrder(boxes);
   const globalIndexMap = new Map(globalOrdered.map((b, i) => [b.id, i]));
   const currentPageBoxes = boxes.filter((b) => b.page === currentPage);
 
-  // Resize handle definitions: [handle key, cursor, left%, top%]
   const HANDLES: [ResizeHandle, string, string, string][] = [
     ["nw", "nw-resize", "-4px", "-4px"],
     ["n",  "n-resize",  "calc(50% - 4px)", "-4px"],
@@ -390,6 +473,8 @@ function AnnotateInner() {
     return <div className="flex items-center justify-center h-screen text-[var(--muted)]">載入中...</div>;
   }
 
+  const displayTitle = displayNameInput || work.name;
+
   return (
     <div className="h-[100dvh] flex flex-col bg-[var(--background)] text-[var(--foreground)]">
 
@@ -400,27 +485,21 @@ function AnnotateInner() {
           ←
         </button>
         <div className="flex-1 min-w-0">
-          <p className="font-display text-base truncate">{work.name}</p>
+          <p className="font-display text-base truncate">{displayTitle}</p>
           <p className="text-xs text-[var(--muted)]">{work.identifier} · {work.category}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Page navigation */}
           {pageCount > 1 && (
             <div className="flex items-center gap-1 border border-[var(--border)] rounded-lg overflow-hidden text-xs">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
+              <button onClick={() => setCurrentPage((p) => Math.max(0, p - 1))} disabled={currentPage === 0}
                 className="px-2 py-1.5 hover:bg-[var(--card-bg)] transition-colors disabled:opacity-30">←</button>
               <span className="px-2 py-1.5 text-[var(--muted)] min-w-[4rem] text-center tabular-nums">
                 頁 {currentPage + 1} / {pageCount}
               </span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(pageCount - 1, p + 1))}
-                disabled={currentPage === pageCount - 1}
+              <button onClick={() => setCurrentPage((p) => Math.min(pageCount - 1, p + 1))} disabled={currentPage === pageCount - 1}
                 className="px-2 py-1.5 hover:bg-[var(--card-bg)] transition-colors disabled:opacity-30">→</button>
             </div>
           )}
-          {/* Zoom controls */}
           <div className="flex items-center gap-1 border border-[var(--border)] rounded-lg overflow-hidden text-xs">
             <button onClick={() => setZoom((z) => Math.max(0.25, +(z - 0.25).toFixed(2)))}
               className="px-2 py-1.5 hover:bg-[var(--card-bg)] transition-colors">−</button>
@@ -441,7 +520,10 @@ function AnnotateInner() {
             className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)] text-[var(--muted)] hover:border-red-400 hover:text-red-400 transition-colors">
             略過
           </button>
-          <button onClick={() => saveDraft("done")} disabled={!countMatch}
+          <button
+            onClick={() => saveDraft("done")}
+            disabled={!canFinish}
+            title={!countMatch ? "框選數與釋文字數不符" : !styleInput.trim() ? "請先選擇書體" : ""}
             className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-[var(--background)] font-bold hover:scale-105 transition-all disabled:opacity-40 disabled:scale-100">
             確認完成
           </button>
@@ -450,22 +532,72 @@ function AnnotateInner() {
 
       <div className="flex-1 flex overflow-hidden">
 
-        {/* Left panel: controls */}
+        {/* Left panel */}
         <div className="shrink-0 w-64 border-r border-[var(--border)] overflow-y-auto p-4 space-y-5">
 
           {/* Metadata */}
           <div className="space-y-3">
             <p className="text-[10px] uppercase font-bold text-[var(--accent)]">後設資料</p>
+
+            {/* Custom display name */}
             <div>
-              <label className="text-xs text-[var(--muted)]">書法家</label>
+              <label className="text-xs text-[var(--muted)]">顯示名稱</label>
+              <input
+                value={displayNameInput}
+                onChange={(e) => setDisplayNameInput(e.target.value)}
+                placeholder={work.name}
+                className="mt-1 w-full bg-[var(--card-bg)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[var(--accent)]"
+              />
+              <p className="mt-0.5 text-[10px] text-[var(--muted)] truncate" title={work.identifier + " · " + work.name}>
+                {work.name}
+              </p>
+            </div>
+
+            {/* Calligrapher */}
+            <div>
+              <label className="text-xs text-[var(--muted)]">書法家（可留空）</label>
               <input value={calligrapherInput} onChange={(e) => setCalligrapherInput(e.target.value)}
                 className="mt-1 w-full bg-[var(--card-bg)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[var(--accent)]" />
             </div>
+
+            {/* Style slug — required */}
             <div>
-              <label className="text-xs text-[var(--muted)]">書體 slug</label>
-              <input value={styleInput} onChange={(e) => setStyleInput(e.target.value)}
-                placeholder="kai / xing / cao / li / zhuan"
-                className="mt-1 w-full bg-[var(--card-bg)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-[var(--accent)]" />
+              <label className={`text-xs ${!styleInput.trim() ? "text-yellow-400 font-bold" : "text-[var(--muted)]"}`}>
+                書體 {!styleInput.trim() && "（必填）"}
+              </label>
+              <div className="mt-1 grid grid-cols-4 gap-1">
+                {STYLE_SLUGS.map(({ slug, label }) => (
+                  <button
+                    key={slug}
+                    onClick={() => setStyleInput(slug)}
+                    className={`py-1 rounded text-xs font-bold transition-colors ${
+                      styleInput === slug
+                        ? "bg-[var(--accent)] text-[var(--background)]"
+                        : "bg-[var(--card-bg)] border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={styleInput}
+                onChange={(e) => setStyleInput(e.target.value)}
+                placeholder="或手動輸入 slug"
+                className="mt-1 w-full bg-[var(--card-bg)] border border-[var(--border)] rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+
+            {/* Source / copyright blurb */}
+            <div>
+              <label className="text-xs text-[var(--muted)]">來源 / 版權</label>
+              <textarea
+                value={sourceBlurbInput}
+                onChange={(e) => setSourceBlurbInput(e.target.value)}
+                rows={2}
+                placeholder="如：御筆宣和宮詞 冊。國立故宮博物院，台北，CC BY 4.0 @ www.npm.gov.tw"
+                className="mt-1 w-full bg-[var(--card-bg)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-[var(--accent)] resize-none"
+              />
             </div>
           </div>
 
@@ -505,7 +637,7 @@ function AnnotateInner() {
               <span>{shiwenChars.length}</span>
             </div>
             <div className={`flex justify-between font-bold ${countMatch ? "text-green-400" : "text-yellow-400"}`}>
-              <span>狀態</span>
+              <span>框/文</span>
               <span>{countMatch ? "✓ 對齊" : `差 ${Math.abs(totalBoxes - shiwenChars.length)} 字`}</span>
             </div>
           </div>
@@ -544,7 +676,7 @@ function AnnotateInner() {
             </div>
           </div>
 
-          {/* Selected box info — only when exactly one box selected */}
+          {/* Selected box info */}
           {singleSelectedBox && (
             <div className="bg-[var(--card-bg)] rounded-xl p-3 space-y-1 text-xs">
               <p className="text-[10px] uppercase font-bold text-[var(--accent)] mb-2">選取框</p>
@@ -568,7 +700,6 @@ function AnnotateInner() {
               maxHeight: "80vh",
             }}
             onMouseDown={handleCanvasMouseDown}
-            onMouseUp={handleCanvasMouseUp}
           >
             <img
               key={`${identifier}-p${currentPage}`}
@@ -581,7 +712,7 @@ function AnnotateInner() {
               draggable={false}
             />
 
-            {/* Bounding boxes overlay — current page only */}
+            {/* Bounding boxes overlay */}
             {currentPageBoxes.map((box) => {
               const isSelected = selectedIds.has(box.id);
               const isLowConf = box.confidence < 0.5;
@@ -593,10 +724,10 @@ function AnnotateInner() {
                   onMouseDown={(e) => handleBoxMouseDown(e, box.id)}
                   style={{
                     position: "absolute",
-                    left: box.x,
-                    top: box.y,
-                    width: box.w,
-                    height: box.h,
+                    left: box.x * renderScale,
+                    top: box.y * renderScale,
+                    width: box.w * renderScale,
+                    height: box.h * renderScale,
                     border: `2px solid ${color}`,
                     boxSizing: "border-box",
                     cursor: drawMode ? "crosshair" : "move",
@@ -614,7 +745,6 @@ function AnnotateInner() {
                     }
                   }}
                 >
-                  {/* Character label */}
                   <span style={{
                     position: "absolute", top: -18, left: 0,
                     fontSize: 11, lineHeight: 1,
@@ -626,7 +756,6 @@ function AnnotateInner() {
                     {globalIdx + 1} {box.char || "?"}
                   </span>
 
-                  {/* Resize handles — only on the single selected box */}
                   {selectedIds.size === 1 && isSelected && HANDLES.map(([handle, cursor, left, top]) => (
                     <div
                       key={handle}
@@ -646,6 +775,23 @@ function AnnotateInner() {
                 </div>
               );
             })}
+
+            {/* Lasso selection overlay */}
+            {lasso && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: lasso.x * renderScale,
+                  top: lasso.y * renderScale,
+                  width: lasso.w * renderScale,
+                  height: lasso.h * renderScale,
+                  border: "2px dashed #e5b84a",
+                  background: "rgba(229,184,74,0.08)",
+                  boxSizing: "border-box",
+                  pointerEvents: "none",
+                }}
+              />
+            )}
           </div>
         </div>
       </div>

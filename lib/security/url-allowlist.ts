@@ -1,4 +1,4 @@
-const ALLOWED_HOSTS = ["digitalarchive.npm.gov.tw"];
+const ALLOWED_HOSTS = ["digitalarchive.npm.gov.tw", "iiifod.npm.gov.tw"];
 
 function isPrivateIPv4(host: string): boolean {
   const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);

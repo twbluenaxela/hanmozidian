@@ -61,6 +61,7 @@ export const calligraphyImages = sqliteTable(
     workId: integer("work_id").references(() => works.id),
     imagePath: text("image_path").notNull(),
     source: text("source"),
+    description: text("description"),
   },
   (table) => [
     index("idx_images_char_style").on(table.characterId, table.styleId),

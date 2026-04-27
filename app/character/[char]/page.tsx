@@ -27,6 +27,7 @@ interface ImageData {
   workId: number | null;
   styleName: string;
   styleSlug: string;
+  source?: string | null;
 }
 
 export default function CharacterPage({
@@ -270,6 +271,7 @@ export default function CharacterPage({
           calligrapherName={selectedImage.calligrapherName}
           workName={selectedImage.workName}
           styleName={selectedImage.styleName}
+          source={selectedImage.source}
           onClose={() => setSelectedImage(null)}
           onZitie={() => setZitieOpen(true)}
         />

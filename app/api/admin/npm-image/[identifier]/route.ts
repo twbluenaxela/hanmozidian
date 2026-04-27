@@ -62,8 +62,11 @@ export async function GET(
   const index = loadIndex();
   const entry = index[identifier];
 
+  // Prefer full-resolution IIIF URLs; fall back to GetImage (600px) thumbnails.
   let upstreamUrl: string | undefined;
-  if (pageIndex > 0 && entry?.imagePages?.length > pageIndex) {
+  if (entry?.iiifPages?.length > pageIndex) {
+    upstreamUrl = entry.iiifPages[pageIndex];
+  } else if (pageIndex > 0 && entry?.imagePages?.length > pageIndex) {
     upstreamUrl = entry.imagePages[pageIndex];
   } else if (pageIndex === 0) {
     upstreamUrl = entry?.imagePages?.[0] || entry?.imageUrl;

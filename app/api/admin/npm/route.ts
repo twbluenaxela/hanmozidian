@@ -12,10 +12,12 @@ const PatchSchema = z
   .object({
     identifier: z.string().min(1).max(128),
     status: z.enum(STATUSES).optional(),
-    annotationDraft: z.string().max(10_000).nullable().optional(),
-    shiwen: z.string().max(500).nullable().optional(),
+    annotationDraft: z.string().max(500_000).nullable().optional(),
+    shiwen: z.string().max(5000).nullable().optional(),
     styleSlug: z.string().max(100).nullable().optional(),
     calligrapher: z.string().max(100).nullable().optional(),
+    displayName: z.string().max(200).nullable().optional(),
+    sourceBlurb: z.string().max(500).nullable().optional(),
   })
   .strict();
 
@@ -93,7 +95,7 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "invalid body", issues: parsed.error.issues }, { status: 400 });
   }
-  const { identifier, status, annotationDraft, shiwen, styleSlug, calligrapher } = parsed.data;
+  const { identifier, status, annotationDraft, shiwen, styleSlug, calligrapher, displayName, sourceBlurb } = parsed.data;
 
   return withWriteLock(() => {
     const index = loadIndex();
@@ -105,6 +107,8 @@ export async function PATCH(req: NextRequest) {
     if (shiwen !== undefined) entry.shiwen = shiwen;
     if (styleSlug !== undefined) entry.styleSlug = styleSlug;
     if (calligrapher !== undefined) entry.calligrapher = calligrapher;
+    if (displayName !== undefined) entry.displayName = displayName;
+    if (sourceBlurb !== undefined) entry.sourceBlurb = sourceBlurb;
     entry.updatedAt = new Date().toISOString();
 
     index[identifier] = entry;

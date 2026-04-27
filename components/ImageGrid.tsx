@@ -12,6 +12,7 @@ interface ImageData {
   workId: number | null;
   styleName: string;
   styleSlug: string;
+  source?: string | null;
 }
 
 interface ImageGridProps {

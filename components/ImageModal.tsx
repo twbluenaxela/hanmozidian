@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { formatAttribution } from "@/lib/source-credits";
 
 interface ImageModalProps {
   imageUrl: string;
   calligrapherName: string | null;
   workName: string | null;
   styleName: string;
+  source?: string | null;
   onClose: () => void;
   onZitie?: () => void;
 }
@@ -16,9 +18,11 @@ export default function ImageModal({
   calligrapherName,
   workName,
   styleName,
+  source,
   onClose,
   onZitie,
 }: ImageModalProps) {
+  const attribution = formatAttribution(source, workName);
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -66,6 +70,9 @@ export default function ImageModal({
               <p className="text-[var(--muted)] text-sm">{workName}</p>
             )}
             <p className="text-[var(--muted)] text-xs">{styleName}</p>
+            {attribution && (
+              <p className="text-[var(--muted)] text-[10px] mt-1 opacity-60">{attribution}</p>
+            )}
           </div>
           {onZitie && (
             <button
