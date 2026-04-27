@@ -128,7 +128,7 @@ def upload_file(client, local_path: Path, key: str) -> bool:
             Key=key,
             ExtraArgs={
                 "ContentType": content_type,
-                "CacheControl": "public, max-age=31536000, immutable",
+                "CacheControl": "public, max-age=86400",
             },
         )
         return True
