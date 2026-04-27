@@ -40,6 +40,7 @@
 | 資料匯入 | `scripts/ingest_zhuojg.py` |
 | R2 上傳 | `scripts/upload_to_r2.py` |
 | 種子資料 | `scripts/seed_reference.ts` |
+| 部署腳本（含 WAL checkpoint） | `deploy.sh` |
 | 測試 | `__tests__/` |
 | 完整程式碼庫摘要 | `SUMMARY.md` |
 
@@ -129,7 +130,9 @@ const imageUrl = resolveImageUrl(image.imagePath);
 
 - **Fly.io** + Docker
 - DB 在生產環境是**唯讀**的 — 所有寫入必須在本機完成後部署
-- 部署前必須執行：`sqlite3 data/shufazidian.db "PRAGMA wal_checkpoint(TRUNCATE);"`
+- **永遠用 `./deploy.sh` 部署，不要直接用 `fly deploy`**
+  - `deploy.sh` 會先執行 WAL checkpoint，再呼叫 `fly deploy`
+  - `.dockerignore` 排除了 `*.db-wal`，若跳過 checkpoint，WAL 中的新資料不會進入 Docker image，導致生產環境資料比本機少
 - 每次 `fly deploy` 會用本機 DB 快照完全重建映像檔
 - 圖片儲存在 Cloudflare R2，DB 只存 metadata
 
@@ -166,7 +169,7 @@ const imageUrl = resolveImageUrl(image.imagePath);
 
 1. **Next.js 16 有 breaking changes** — 寫任何 Next.js 相關程式碼前，先查 `node_modules/next/dist/docs/`
 2. **better-sqlite3 是同步的** — 所有 Drizzle 查詢都是同步的，不需要 `await`
-3. **WAL 模式** — 本機開發時 SQLite 使用 WAL，部署前必須 checkpoint
+3. **WAL 模式** — 本機開發時 SQLite 使用 WAL；`*.db-wal` 被 `.dockerignore` 排除，所以部署時一定要透過 `./deploy.sh`（會自動 checkpoint），否則 WAL 裡的新資料不會進入生產環境
 4. **zi.tools 有速率限制** — 爬蟲內建延遲，不要移除它
 5. **圖片正規化** — 所有圖片統一為 256px WebP
 
