@@ -1,5 +1,7 @@
 # 書法字典 (Chinese Calligraphy Dictionary)
 
+**Live site: [shufazidian.fly.io](https://shufazidian.fly.io)**
+
 A reference tool for calligraphers to look up how famous historical calligraphers wrote specific characters across different script styles (金文、小篆、隸書、楷書、行書、草書).
 
 ## Features

@@ -28,6 +28,23 @@ const navItems = [
     ),
   },
   {
+    href: "/browse",
+    label: "瀏覽",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
+        {/* left roller */}
+        <rect x="2" y="5" width="3.5" height="14" rx="1.75" strokeWidth="1.6" />
+        {/* right roller */}
+        <rect x="18.5" y="5" width="3.5" height="14" rx="1.75" strokeWidth="1.6" />
+        {/* scroll body */}
+        <rect x="5.5" y="7" width="13" height="10" strokeWidth="1.4" />
+        {/* text lines */}
+        <line x1="8.5" y1="10.5" x2="15.5" y2="10.5" strokeWidth="1.3" />
+        <line x1="8.5" y1="13.5" x2="13"   y2="13.5" strokeWidth="1.3" />
+      </svg>
+    ),
+  },
+  {
     href: "/jizi",
     label: "集字",
     icon: (
