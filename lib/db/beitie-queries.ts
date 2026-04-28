@@ -1,4 +1,3 @@
-import { sqlite } from "@/lib/db";
 import { d1Query, isD1Configured } from "@/lib/db/d1-client";
 
 export interface BeitieRow {
@@ -52,6 +51,14 @@ export type BeitieUpdateFields = Partial<{
   aiGeneratedAt: string | null;
 }>;
 
+function ensureD1Configured() {
+  if (!isD1Configured()) {
+    throw new Error(
+      "D1 is required for beitie data. Missing CF_ACCOUNT_ID, CF_API_TOKEN, or D1_DATABASE_ID."
+    );
+  }
+}
+
 function parseRow(row: Record<string, unknown>): BeitieRow {
   return {
     id: row.id as number,
@@ -81,29 +88,17 @@ function parseRow(row: Record<string, unknown>): BeitieRow {
 }
 
 export async function listBeitie(styleSlug?: string): Promise<BeitieRow[]> {
-  if (isD1Configured()) {
-    const rows = styleSlug
-      ? await d1Query("SELECT * FROM beitie WHERE style_slug = ? ORDER BY id", [styleSlug])
-      : await d1Query("SELECT * FROM beitie ORDER BY id");
-    return rows.map(parseRow);
-  }
-
+  ensureD1Configured();
   const rows = styleSlug
-    ? sqlite.prepare("SELECT * FROM beitie WHERE style_slug = ? ORDER BY id").all(styleSlug)
-    : sqlite.prepare("SELECT * FROM beitie ORDER BY id").all();
-  return (rows as Record<string, unknown>[]).map(parseRow);
+    ? await d1Query("SELECT * FROM beitie WHERE style_slug = ? ORDER BY id", [styleSlug])
+    : await d1Query("SELECT * FROM beitie ORDER BY id");
+  return rows.map(parseRow);
 }
 
 export async function getBeitieById(id: number): Promise<BeitieRow | null> {
-  if (isD1Configured()) {
-    const rows = await d1Query("SELECT * FROM beitie WHERE id = ?", [id]);
-    return rows[0] ? parseRow(rows[0]) : null;
-  }
-
-  const row = sqlite.prepare("SELECT * FROM beitie WHERE id = ?").get(id) as
-    | Record<string, unknown>
-    | undefined;
-  return row ? parseRow(row) : null;
+  ensureD1Configured();
+  const rows = await d1Query("SELECT * FROM beitie WHERE id = ?", [id]);
+  return rows[0] ? parseRow(rows[0]) : null;
 }
 
 export async function insertBeitie(data: {
@@ -123,61 +118,35 @@ export async function insertBeitie(data: {
   sourceCredit?: string | null;
   sourceUrl?: string | null;
 }): Promise<number> {
-  if (isD1Configured()) {
-    const rows = await d1Query(
-      `INSERT INTO beitie
-        (title, author, dynasty, style, style_slug, year_label, medium,
-         char_count, summary, tags, cover_image, pages_json,
-         shiwen, source_credit, source_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      RETURNING id`,
-      [
-        data.title,
-        data.author,
-        data.dynasty,
-        data.style,
-        data.styleSlug,
-        data.yearLabel ?? null,
-        data.medium ?? null,
-        data.charCount ?? null,
-        data.summary ?? null,
-        JSON.stringify(data.tags ?? []),
-        data.coverImage ?? null,
-        JSON.stringify(data.pages ?? []),
-        data.shiwen ?? null,
-        data.sourceCredit ?? null,
-        data.sourceUrl ?? null,
-      ]
-    );
-    const inserted = rows[0]?.id;
-    if (typeof inserted !== "number") throw new Error("Failed to insert beitie row in D1.");
-    return inserted;
-  }
-
-  const result = sqlite.prepare(`
-    INSERT INTO beitie
+  ensureD1Configured();
+  const rows = await d1Query(
+    `INSERT INTO beitie
       (title, author, dynasty, style, style_slug, year_label, medium,
        char_count, summary, tags, cover_image, pages_json,
        shiwen, source_credit, source_url)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    data.title,
-    data.author,
-    data.dynasty,
-    data.style,
-    data.styleSlug,
-    data.yearLabel ?? null,
-    data.medium ?? null,
-    data.charCount ?? null,
-    data.summary ?? null,
-    JSON.stringify(data.tags ?? []),
-    data.coverImage ?? null,
-    JSON.stringify(data.pages ?? []),
-    data.shiwen ?? null,
-    data.sourceCredit ?? null,
-    data.sourceUrl ?? null
+    RETURNING id`,
+    [
+      data.title,
+      data.author,
+      data.dynasty,
+      data.style,
+      data.styleSlug,
+      data.yearLabel ?? null,
+      data.medium ?? null,
+      data.charCount ?? null,
+      data.summary ?? null,
+      JSON.stringify(data.tags ?? []),
+      data.coverImage ?? null,
+      JSON.stringify(data.pages ?? []),
+      data.shiwen ?? null,
+      data.sourceCredit ?? null,
+      data.sourceUrl ?? null,
+    ]
   );
-  return result.lastInsertRowid as number;
+  const inserted = rows[0]?.id;
+  if (typeof inserted !== "number") throw new Error("Failed to insert beitie row in D1.");
+  return inserted;
 }
 
 export async function updateBeitie(id: number, fields: BeitieUpdateFields): Promise<void> {
@@ -228,22 +197,14 @@ export async function updateBeitie(id: number, fields: BeitieUpdateFields): Prom
   if (setClauses.length === 0) return;
 
   setClauses.push("updated_at = datetime('now')");
-  if (isD1Configured()) {
-    values.push(id);
-    await d1Query(`UPDATE beitie SET ${setClauses.join(", ")} WHERE id = ?`, values);
-    return;
-  }
-
+  ensureD1Configured();
   values.push(id);
-  sqlite.prepare(`UPDATE beitie SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
+  await d1Query(`UPDATE beitie SET ${setClauses.join(", ")} WHERE id = ?`, values);
 }
 
 export async function deleteBeitie(id: number): Promise<void> {
-  if (isD1Configured()) {
-    await d1Query("DELETE FROM beitie WHERE id = ?", [id]);
-    return;
-  }
-  sqlite.prepare("DELETE FROM beitie WHERE id = ?").run(id);
+  ensureD1Configured();
+  await d1Query("DELETE FROM beitie WHERE id = ?", [id]);
 }
 
 export async function saveAiSummary(
@@ -257,33 +218,9 @@ export async function saveAiSummary(
     practice: string;
   }
 ): Promise<void> {
-  if (isD1Configured()) {
-    await d1Query(
-      `UPDATE beitie SET
-        ai_history    = ?,
-        ai_biography  = ?,
-        ai_style      = ?,
-        ai_influence  = ?,
-        ai_stories    = ?,
-        ai_practice   = ?,
-        ai_generated_at = datetime('now'),
-        updated_at    = datetime('now')
-      WHERE id = ?`,
-      [
-        sections.history,
-        sections.biography,
-        sections.style,
-        sections.influence,
-        sections.stories,
-        sections.practice,
-        id,
-      ]
-    );
-    return;
-  }
-
-  sqlite.prepare(`
-    UPDATE beitie SET
+  ensureD1Configured();
+  await d1Query(
+    `UPDATE beitie SET
       ai_history    = ?,
       ai_biography  = ?,
       ai_style      = ?,
@@ -292,14 +229,15 @@ export async function saveAiSummary(
       ai_practice   = ?,
       ai_generated_at = datetime('now'),
       updated_at    = datetime('now')
-    WHERE id = ?
-  `).run(
-    sections.history,
-    sections.biography,
-    sections.style,
-    sections.influence,
-    sections.stories,
-    sections.practice,
-    id
+    WHERE id = ?`,
+    [
+      sections.history,
+      sections.biography,
+      sections.style,
+      sections.influence,
+      sections.stories,
+      sections.practice,
+      id,
+    ]
   );
 }
