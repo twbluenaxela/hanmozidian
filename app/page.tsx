@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
+
 
 export const dynamic = "force-dynamic";
 
@@ -176,8 +176,9 @@ export default function HomePage() {
             borderRadius: 5,
             overflow: "hidden", flexShrink: 0, opacity: 0.85,
           }}>
-            <Image src="/logo.png" alt="" width={28} height={28} loading="eager" priority
-              style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="" width={28} height={28}
+              style={{ width: "100%", height: "100%", objectFit: "contain" }} />
           </div>
           <h1 style={{
             fontFamily: 'var(--font-noto-serif-tc), "Songti TC", serif', fontWeight: 900,
