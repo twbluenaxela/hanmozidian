@@ -19,9 +19,11 @@ const navItems = [
     href: "/beitie",
     label: "碑帖",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 2v20M2 12h20" />
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+        <rect x="4" y="3" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.4" />
+        <line x1="7" y1="8"  x2="15" y2="8"  stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        <line x1="7" y1="11" x2="15" y2="11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+        <line x1="7" y1="14" x2="12" y2="14" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
       </svg>
     ),
   },

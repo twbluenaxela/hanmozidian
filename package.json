@@ -12,6 +12,7 @@
     "deploy": "node -e \"const db = require('better-sqlite3')('data/shufazidian.db'); db.pragma('wal_checkpoint(TRUNCATE)'); db.close();\" && fly deploy"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
     "@aws-sdk/client-s3": "^3.1029.0",
     "@flydotio/litestream": "^1.0.1",
     "better-sqlite3": "^12.8.0",
