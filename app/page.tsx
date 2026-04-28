@@ -123,11 +123,11 @@ function Pill({ label, href, icon, onNavigate, onRandom }: {
       style={{
         display: "inline-flex", alignItems: "center", gap: 7,
         padding: "7px 14px",
-        background: hovered ? "#141414" : "transparent",
-        border: "1px solid", borderColor: hovered ? "#aaa" : "#666",
+        background: "rgba(255,255,255,0.07)",
+        border: "1px solid", borderColor: hovered ? "#d4a853" : "rgba(255,255,255,0.2)",
         borderRadius: 999,
         cursor: "pointer",
-        color: hovered ? "#fff" : "#e5e5e5",
+        color: hovered ? "#d4a853" : "#aaa",
         transition: "all 0.15s",
         whiteSpace: "nowrap",
       }}
