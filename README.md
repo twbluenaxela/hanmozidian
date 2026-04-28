@@ -20,6 +20,17 @@ Type a phrase, pick a script style, and compose a visual reference board:
 ### 碑帖瀏覽 (Browse by Work/Calligrapher)
 Browse all characters from a specific calligrapher or famous work, with infinite scroll and lightbox viewing.
 
+### 碑帖 (Beitie — Calligraphy Works Gallery)
+A curated gallery of historical calligraphy works (steles, rubbings, manuscript facsimiles):
+- Browse and filter by script style (楷/行/草/隸/篆)
+- Client-side text search by title, author, or dynasty
+- Detail page with multi-page image viewer and lightbox (pinch-to-zoom on mobile, scroll-wheel on desktop)
+- Full-text transcription (釋文) display
+- AI-generated scholarly commentary in 6 sections (歷史背景, 作者生平, 書法風格, 影響傳承, 趣事典故, 臨摹建議)
+- **Data stored in Cloudflare D1** (separate from the main SQLite DB)
+- Images stored in R2 under the `beitie/` prefix
+- Admin interface with NPM (National Palace Museum) catalog lookup for semi-automated data entry
+
 ### 個人中心 (My Collection)
 - Save favorite characters
 - Store and edit Jizi compositions
@@ -31,9 +42,10 @@ NPM (National Palace Museum) digital collection annotation workspace for process
 ## Tech Stack
 
 - **Frontend**: Next.js 16 (App Router) + TypeScript + Tailwind CSS
-- **Database**: SQLite (via `better-sqlite3`) + Drizzle ORM
+- **Database**: SQLite (via `better-sqlite3`) + Drizzle ORM for calligraphy images; **Cloudflare D1** for beitie works
 - **Image Storage**: Cloudflare R2 in production, local `public/images/` in dev
 - **Authentication**: Firebase Auth (Google + Email/Password)
+- **AI**: Google Gemini (beitie commentary generation); Anthropic Claude (legacy beitie route)
 - **Data Scripts**: Python (dataset ingestion + scraping)
 - **Deployment**: Fly.io + Docker
 
@@ -107,6 +119,12 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 NEXT_PUBLIC_FIREBASE_APP_ID=
+
+# Beitie subsystem (Cloudflare D1 + Gemini)
+CF_ACCOUNT_ID=
+CF_API_TOKEN=
+D1_DATABASE_ID=
+GEMINI_API_KEY=
 ```
 
 **Firebase setup:** Create a project at [console.firebase.google.com](https://console.firebase.google.com), enable **Authentication** (Google + Email/Password providers) and **Firestore Database**, then copy the web app config values into `.env.local`.
@@ -213,16 +231,23 @@ shufazidian/
 │   ├── jizi/
 │   │   ├── page.tsx              # 集字 mode (phrase composition)
 │   │   └── AGENT.md              # Architecture notes for this subsystem
+│   ├── beitie/
+│   │   ├── page.tsx              # 碑帖 gallery (style filter + search)
+│   │   ├── [id]/page.tsx         # 碑帖 detail (images + AI commentary)
+│   │   └── AGENT.md              # Architecture notes for this subsystem
 │   ├── browse/page.tsx           # 碑帖瀏覽 (by calligrapher/work)
 │   ├── me/page.tsx               # 個人中心 (favorites + saved jizi)
-│   ├── admin/                    # 管理後台 (NPM annotation)
+│   ├── admin/                    # 管理後台 (NPM annotation + beitie admin)
 │   └── api/
 │       ├── search/
 │       ├── character/[char]/images/
 │       ├── calligraphers/
 │       ├── works/
 │       ├── jizi/
-│       └── admin/npm/            # NPM data processing API
+│       ├── beitie/               # Public beitie API (list + detail + AI gen)
+│       └── admin/
+│           ├── npm/              # NPM data processing API
+│           └── beitie/           # Admin CRUD + image upload + D1 sync
 ├── components/
 │   ├── SearchBar.tsx             # Search input with IME handling
 │   ├── StyleTabs.tsx             # 篆/隸/楷/行/草 tabs

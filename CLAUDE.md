@@ -29,6 +29,12 @@
 | 字典詳情頁 | `app/character/[char]/page.tsx` |
 | 集字工坊（最複雜頁面） | `app/jizi/page.tsx` |
 | 碑帖瀏覽 | `app/browse/page.tsx` |
+| 碑帖藏品清單 | `app/beitie/page.tsx` |
+| 碑帖詳情頁 | `app/beitie/[id]/page.tsx` |
+| 碑帖架構文件 | `app/beitie/AGENT.md` |
+| 碑帖資料庫查詢 | `lib/db/beitie-queries.ts` |
+| Cloudflare D1 客戶端 | `lib/db/d1-client.ts` |
+| 碑帖管理後台 | `app/admin/beitie/page.tsx` |
 | 個人中心 | `app/me/page.tsx` |
 | 管理後台（隊列） | `app/admin/page.tsx` |
 | 管理後台（標注畫布） | `app/admin/annotate/page.tsx` |
@@ -150,6 +156,23 @@ const imageUrl = resolveImageUrl(image.imagePath);
 - R2 憑證（生產圖片儲存）
 - Firebase 設定（認證）
 - `USE_R2=false`（開發）/ `true`（生產）
+- `CF_ACCOUNT_ID`, `CF_API_TOKEN`, `D1_DATABASE_ID`（碑帖 D1 查詢必需）
+- `GEMINI_API_KEY`（碑帖 AI 解析生成必需）
+
+## 碑帖 (Beitie) 子系統
+
+碑帖是一個獨立的子系統，資料庫、圖片前綴、查詢層都與主應用分離。有完整的架構文件：
+
+**→ `app/beitie/AGENT.md`**
+
+任何涉及 `app/beitie/`、`app/admin/beitie/`、`app/api/beitie/`、`app/api/admin/beitie/` 或 `lib/db/beitie-queries.ts` 的工作，請先閱讀該文件。
+
+關鍵重點：
+- 資料儲存於 **Cloudflare D1**（不是本機 SQLite）
+- 所有查詢函數是 **`async`**，必須 `await`（與主應用的同步查詢相反）
+- `tags` 和 `pages` 在 D1 中以 JSON 字串儲存
+- AI 解析使用 **Google Gemini**（不是 Claude），需要 `GEMINI_API_KEY`
+- 圖片上傳到 R2 的 `beitie/` 前綴
 
 ## 管理後台子系統
 
@@ -157,7 +180,7 @@ const imageUrl = resolveImageUrl(image.imagePath);
 
 **→ `app/admin/AGENT.md`**
 
-任何涉及 `app/admin/`、`app/api/admin/` 或 `pipeline/` 的工作，請先閱讀該文件。
+任何涉及 `app/admin/`、`app/api/admin/npm/` 或 `pipeline/` 的工作，請先閱讀該文件。
 
 關鍵重點：
 - 標注資料儲存於 `pipeline/data/works_index.json`（**不是** SQLite DB）

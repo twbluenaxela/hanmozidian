@@ -58,11 +58,22 @@ const AI_FIELDS: { key: keyof FormState; label: string }[] = [
 ];
 
 const GEMINI_MODELS = [
+  { id: "gemini-3.1-pro-preview",         label: "Gemini 3.1 Pro Preview" },
+  { id: "gemini-3-pro-preview",           label: "Gemini 3 Pro Preview" },
+  { id: "gemini-3-flash-preview",         label: "Gemini 3 Flash Preview" },
+  { id: "gemini-3.1-flash-lite-preview",  label: "Gemini 3.1 Flash-Lite Preview" },
+  { id: "gemini-pro-latest",              label: "Gemini Pro Latest" },
+  { id: "gemini-flash-latest",            label: "Gemini Flash Latest" },
+  { id: "gemini-flash-lite-latest",       label: "Gemini Flash-Lite Latest" },
   { id: "gemini-2.0-flash",               label: "Gemini 2.0 Flash（預設）" },
   { id: "gemini-2.5-flash",               label: "Gemini 2.5 Flash" },
+  { id: "gemini-2.5-flash-lite",          label: "Gemini 2.5 Flash-Lite" },
   { id: "gemini-2.5-pro",                 label: "Gemini 2.5 Pro" },
   { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash Preview" },
   { id: "gemini-2.5-pro-preview-05-06",   label: "Gemini 2.5 Pro Preview" },
+  { id: "gemini-2.0-flash-001",           label: "Gemini 2.0 Flash 001" },
+  { id: "gemini-2.0-flash-lite",          label: "Gemini 2.0 Flash-Lite" },
+  { id: "gemini-2.0-flash-lite-001",      label: "Gemini 2.0 Flash-Lite 001" },
   { id: "gemini-1.5-flash",               label: "Gemini 1.5 Flash" },
   { id: "gemini-1.5-pro",                 label: "Gemini 1.5 Pro" },
 ];
@@ -79,6 +90,7 @@ export default function EditBeiitiePage() {
   const [error, setError] = useState("");
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingPages, setUploadingPages] = useState(false);
+  const [coverIdx, setCoverIdx] = useState(0);
   const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
   const [geminiModels, setGeminiModels] = useState(GEMINI_MODELS);
   const [generating, setGenerating] = useState(false);
@@ -92,6 +104,7 @@ export default function EditBeiitiePage() {
       .then((d) => {
         const it = d.item;
         if (!it) { setLoading(false); return; }
+        setCoverIdx(0);
         setForm({
           title: it.title ?? "",
           author: it.author ?? "",
@@ -155,7 +168,7 @@ export default function EditBeiitiePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Upload failed");
       const urls = (data.uploads as { url: string }[]).map((u) => u.url);
-      if (field === "cover") setField("coverImage", urls[0] ?? "");
+      if (field === "cover") { setField("coverImage", urls[0] ?? ""); setCoverIdx(0); }
       else setForm((p) => p ? { ...p, pages: [...p.pages, ...urls] } : p);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload error");
@@ -209,6 +222,16 @@ export default function EditBeiitiePage() {
     }
   }
 
+  function removeImage(idx: number) {
+    const next = allImages.filter((_, i) => i !== idx);
+    setCoverIdx((prev) => {
+      if (idx < prev) return prev - 1;
+      if (idx === prev) return 0;
+      return prev;
+    });
+    setForm((p) => p ? { ...p, coverImage: next[0] ?? "", pages: next.slice(1) } : p);
+  }
+
   async function handleSubmit(uploadToD1 = false) {
     if (!form) return;
     if (!form.title || !form.author || !form.dynasty || !form.style || !form.styleSlug) {
@@ -240,8 +263,8 @@ export default function EditBeiitiePage() {
           shiwen: form.shiwen || null,
           sourceCredit: form.sourceCredit || null,
           sourceUrl: form.sourceUrl || null,
-          coverImage: form.coverImage || null,
-          pages: form.pages,
+          coverImage: allImages[coverIdx] || null,
+          pages: allImages.filter((_, i) => i !== coverIdx),
           aiHistory: form.aiHistory || null,
           aiBiography: form.aiBiography || null,
           aiStyle: form.aiStyle || null,
@@ -292,21 +315,36 @@ export default function EditBeiitiePage() {
         {/* Image preview */}
         {allImages.length > 0 && (
           <div>
-            <p className="text-xs text-[var(--muted)] mb-2">圖片 · {allImages.length} 頁</p>
+            <p className="text-xs text-[var(--muted)] mb-2">圖片 · {allImages.length} 頁 · 點擊圖片設為封面</p>
             <div className="flex gap-2 overflow-x-auto pb-2">
-              {allImages.map((url, i) => (
-                <div key={i} className="relative shrink-0">
-                  <img src={url} alt="" className="h-24 w-auto rounded border border-[var(--border)] object-contain bg-[#0a0a0a]" />
-                  {i === 0 && <span className="absolute top-1 left-1 text-[9px] bg-black/60 text-[var(--accent)] px-1 rounded">封面</span>}
-                  <button
-                    onClick={() => {
-                      if (i === 0) setField("coverImage", "");
-                      else setForm((p) => p ? { ...p, pages: p.pages.filter((_, pi) => pi !== i - 1) } : p);
-                    }}
-                    className="absolute top-1 right-1 text-[10px] bg-black/60 text-red-400 px-1 rounded"
-                  >✕</button>
-                </div>
-              ))}
+              {allImages.map((url, i) => {
+                const isCover = i === coverIdx;
+                return (
+                  <div key={i} className="relative shrink-0 group">
+                    <img
+                      src={url}
+                      alt=""
+                      onClick={() => { if (!isCover) setCoverIdx(i); }}
+                      className={`h-24 w-auto rounded border object-contain bg-[#0a0a0a] transition-colors ${
+                        isCover
+                          ? "border-[var(--accent)]"
+                          : "border-[var(--border)] cursor-pointer group-hover:border-[var(--accent)]/50"
+                      }`}
+                    />
+                    {isCover ? (
+                      <span className="absolute top-1 left-1 text-[9px] bg-[var(--accent)] text-black px-1.5 py-0.5 rounded font-medium">封面</span>
+                    ) : (
+                      <span className="absolute top-1 left-1 text-[9px] bg-black/70 text-[var(--accent)] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        設為封面
+                      </span>
+                    )}
+                    <button
+                      onClick={() => removeImage(i)}
+                      className="absolute top-1 right-1 text-[10px] bg-black/60 text-red-400 px-1 rounded hover:bg-red-900/40"
+                    >✕</button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

@@ -194,6 +194,7 @@ export default function BeitieDetailPage() {
   const [activeTab, setActiveTab] = useState<typeof AI_TABS[number]["key"]>("aiHistory");
   const [activeImg, setActiveImg] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const thumbnailStripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -202,6 +203,66 @@ export default function BeitieDetailPage() {
       .then((d) => { setItem(d.item ?? null); setLoading(false); })
       .catch(() => setLoading(false));
   }, [id]);
+
+  // Keyboard left/right to navigate images (only when lightbox is closed)
+  useEffect(() => {
+    if (!item) return;
+    const allImages = [item.coverImage, ...item.pages].filter(Boolean) as string[];
+    if (allImages.length <= 1) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (lightboxOpen) return;
+      if (e.key === "ArrowLeft") setActiveImg((i) => Math.max(0, i - 1));
+      if (e.key === "ArrowRight") setActiveImg((i) => Math.min(allImages.length - 1, i + 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [item, lightboxOpen]);
+
+  // Drag-to-scroll on thumbnail strip
+  useEffect(() => {
+    const el = thumbnailStripRef.current;
+    if (!el) return;
+    let isDown = false;
+    let startX = 0;
+    let scrollLeft = 0;
+    let hasDragged = false;
+
+    const onMouseDown = (e: MouseEvent) => {
+      isDown = true;
+      hasDragged = false;
+      startX = e.pageX - el.offsetLeft;
+      scrollLeft = el.scrollLeft;
+      el.style.cursor = "grabbing";
+    };
+    const onMouseUp = () => { isDown = false; el.style.cursor = "grab"; };
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - el.offsetLeft;
+      const walk = x - startX;
+      if (Math.abs(walk) > 4) hasDragged = true;
+      el.scrollLeft = scrollLeft - walk;
+    };
+    // Suppress the click that fires after a drag so thumbnails don't misfire
+    const onClickCapture = (e: MouseEvent) => {
+      if (hasDragged) { e.stopPropagation(); hasDragged = false; }
+    };
+
+    el.style.cursor = "grab";
+    el.addEventListener("mousedown", onMouseDown);
+    el.addEventListener("mouseup", onMouseUp);
+    // document mouseup catches releases outside the strip
+    document.addEventListener("mouseup", onMouseUp);
+    el.addEventListener("mousemove", onMouseMove);
+    el.addEventListener("click", onClickCapture, true);
+    return () => {
+      el.removeEventListener("mousedown", onMouseDown);
+      el.removeEventListener("mouseup", onMouseUp);
+      document.removeEventListener("mouseup", onMouseUp);
+      el.removeEventListener("mousemove", onMouseMove);
+      el.removeEventListener("click", onClickCapture, true);
+    };
+  }, [item]);
 
   if (loading) {
     return (
@@ -250,7 +311,7 @@ export default function BeitieDetailPage() {
         {/* Single scrollable column */}
         <div className="flex-1 overflow-y-auto">
           {/* Title + badges */}
-          <div className="px-5 pt-6 pb-4">
+          <div className="px-6 pt-6 pb-4">
             <div className="flex items-end gap-3 mb-3 flex-wrap">
               <h1
                 className="font-display font-black text-4xl text-[var(--accent)]"
@@ -271,14 +332,39 @@ export default function BeitieDetailPage() {
           </div>
 
           {/* Hero image */}
-          <div className="bg-[#060606] border-y border-[var(--border)] flex items-center justify-center" style={{ minHeight: 240 }}>
+          <div className="relative bg-[#060606] border-y border-[var(--border)] flex items-center justify-center group" style={{ minHeight: 240 }}>
             {allImages.length > 0 ? (
-              <img
-                src={allImages[activeImg]}
-                alt={item.title}
-                onClick={() => setLightboxOpen(true)}
-                className="max-h-[55vh] w-full object-contain cursor-zoom-in"
-              />
+              <>
+                <img
+                  src={allImages[activeImg]}
+                  alt={item.title}
+                  onClick={() => setLightboxOpen(true)}
+                  className="max-h-[55vh] w-full object-contain cursor-zoom-in"
+                />
+                {allImages.length > 1 && (
+                  <>
+                    <button
+                      onClick={() => setActiveImg((i) => Math.max(0, i - 1))}
+                      disabled={activeImg === 0}
+                      aria-label="上一頁"
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 hover:bg-black/75"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      onClick={() => setActiveImg((i) => Math.min(allImages.length - 1, i + 1))}
+                      disabled={activeImg === allImages.length - 1}
+                      aria-label="下一頁"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-0 hover:bg-black/75"
+                    >
+                      ›
+                    </button>
+                    <span className="absolute bottom-2 right-3 text-[10px] text-white/40 select-none">
+                      {activeImg + 1} / {allImages.length}
+                    </span>
+                  </>
+                )}
+              </>
             ) : (
               <span
                 className="font-display select-none"
@@ -293,26 +379,44 @@ export default function BeitieDetailPage() {
           {allImages.length > 1 && (
             <div className="px-4 py-3 bg-[var(--card-bg)] border-b border-[var(--border)]">
               <p className="text-[10px] text-[var(--muted)] mb-2">分頁 · {allImages.length} 頁</p>
-              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-                {allImages.map((url, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setActiveImg(i)}
-                    className="shrink-0 w-14 h-[4.5rem] rounded overflow-hidden border transition-all active:scale-95"
-                    style={{
-                      borderColor: activeImg === i ? "var(--accent)" : "var(--border)",
-                      opacity: activeImg === i ? 1 : 0.5,
-                    }}
-                  >
-                    <img src={url} alt="" className="w-full h-full object-cover" />
-                  </button>
-                ))}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setActiveImg((i) => Math.max(0, i - 1))}
+                  disabled={activeImg === 0}
+                  aria-label="上一頁"
+                  className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] transition-colors disabled:opacity-20"
+                >
+                  ‹
+                </button>
+                <div ref={thumbnailStripRef} className="flex gap-2 overflow-x-auto pb-1 select-none flex-1" style={{ scrollbarWidth: "none" }}>
+                  {allImages.map((url, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setActiveImg(i)}
+                      className="shrink-0 w-14 h-[4.5rem] rounded overflow-hidden border transition-all active:scale-95"
+                      style={{
+                        borderColor: activeImg === i ? "var(--accent)" : "var(--border)",
+                        opacity: activeImg === i ? 1 : 0.5,
+                      }}
+                    >
+                      <img src={url} alt="" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setActiveImg((i) => Math.min(allImages.length - 1, i + 1))}
+                  disabled={activeImg === allImages.length - 1}
+                  aria-label="下一頁"
+                  className="shrink-0 w-7 h-7 rounded flex items-center justify-center text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--border)] transition-colors disabled:opacity-20"
+                >
+                  ›
+                </button>
               </div>
             </div>
           )}
 
           {/* Metadata + tags + source */}
-          <div className="px-5 py-4 border-b border-[var(--border)] space-y-2">
+          <div className="px-6 py-4 border-b border-[var(--border)] space-y-2">
             {[
               ["作者", item.author],
               ["朝代", item.dynasty],
@@ -369,11 +473,11 @@ export default function BeitieDetailPage() {
           {/* 釋文 */}
           {item.shiwen && (
             <details className="border-b border-[var(--border)] group">
-              <summary className="px-5 py-3 text-xs text-[var(--muted)] cursor-pointer select-none hover:text-[var(--foreground)] transition-colors list-none flex items-center gap-2">
+              <summary className="px-6 py-3 text-xs text-[var(--muted)] cursor-pointer select-none hover:text-[var(--foreground)] transition-colors list-none flex items-center gap-2">
                 <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
                 釋文
               </summary>
-              <div className="px-5 pb-4 text-sm font-display leading-loose text-[var(--foreground)] tracking-wider">
+              <div className="px-6 pb-4 text-sm font-display leading-loose text-[var(--foreground)] tracking-wider">
                 {item.shiwen}
               </div>
             </details>
@@ -388,7 +492,7 @@ export default function BeitieDetailPage() {
           ) : (
             <div className="pb-20">
               {/* AI label */}
-              <div className="flex items-center gap-2 px-5 pt-5 pb-3">
+              <div className="flex items-center gap-2 px-6 pt-5 pb-3">
                 <span
                   className="text-[10px] px-2.5 py-1 rounded-full border"
                   style={{ background: "rgba(212,168,83,0.08)", borderColor: "rgba(212,168,83,0.2)", color: "var(--accent)" }}
@@ -399,7 +503,7 @@ export default function BeitieDetailPage() {
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-[var(--border)] px-5 overflow-x-auto">
+              <div className="flex border-b border-[var(--border)] px-6 overflow-x-auto">
                 {AI_TABS.map((tab) => (
                   <button
                     key={tab.key}
@@ -417,7 +521,7 @@ export default function BeitieDetailPage() {
               </div>
 
               {/* Tab content */}
-              <div key={activeTab} className="px-5 py-5">
+              <div key={activeTab} className="px-6 py-5">
                 {activeContent ? (
                   <Prose text={activeContent} />
                 ) : (

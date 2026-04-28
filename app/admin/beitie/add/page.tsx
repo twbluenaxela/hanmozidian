@@ -73,6 +73,8 @@ export default function AddBeiitiePage() {
   const [npmResults, setNpmResults] = useState<NpmResult[]>([]);
   const [npmSearching, setNpmSearching] = useState(false);
   const [selectedNpm, setSelectedNpm] = useState<NpmResult | null>(null);
+  const [fetchingPages, setFetchingPages] = useState(false);
+  const [coverIdx, setCoverIdx] = useState(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Upload state
@@ -92,9 +94,11 @@ export default function AddBeiitiePage() {
     }, 300);
   }, [npmQuery]);
 
-  function selectNpmWork(work: NpmResult) {
+  async function selectNpmWork(work: NpmResult) {
+    setCoverIdx(0);
     setSelectedNpm(work);
     const styleLabel = STYLE_OPTIONS.find((s) => s.slug === work.styleSlug)?.label ?? work.styleSlug;
+    const initialPages = work.imagePages.length > 0 ? work.imagePages : [];
     setForm({
       title: work.name,
       author: work.calligrapher,
@@ -109,9 +113,32 @@ export default function AddBeiitiePage() {
       shiwen: work.shiwen ?? "",
       sourceCredit: "國立故宮博物院",
       sourceUrl: work.sourceUrl,
-      coverImage: work.imagePages.length > 0 ? work.imagePages[0] : work.imageUrl,
-      pages: work.imagePages.length > 1 ? work.imagePages.slice(1) : [],
+      coverImage: initialPages.length > 0 ? initialPages[0] : work.imageUrl,
+      pages: initialPages.length > 1 ? initialPages.slice(1) : [],
     });
+
+    if (work.imagePages.length === 0) {
+      setFetchingPages(true);
+      try {
+        const res = await fetch("/api/admin/beitie/npm-fetch-pages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: work.identifier }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const fetched: string[] = data.pageUrls ?? [];
+          if (fetched.length > 0) {
+            setForm((p) => ({ ...p, coverImage: fetched[0], pages: fetched.slice(1) }));
+            setSelectedNpm((prev) => prev ? { ...prev, imagePages: data.imagePages ?? [], pageCount: fetched.length } : prev);
+          }
+        }
+      } catch {
+        // silently fail — user can still proceed with single cover image
+      } finally {
+        setFetchingPages(false);
+      }
+    }
   }
 
   function setField(key: keyof FormState, val: string | string[]) {
@@ -131,6 +158,7 @@ export default function AddBeiitiePage() {
       const urls = (data.uploads as { url: string }[]).map((u) => u.url);
       if (field === "cover") {
         setField("coverImage", urls[0] ?? "");
+        setCoverIdx(0);
       } else {
         setForm((prev) => ({ ...prev, pages: [...prev.pages, ...urls] }));
       }
@@ -140,6 +168,16 @@ export default function AddBeiitiePage() {
       if (field === "cover") setUploadingCover(false);
       else setUploadingPages(false);
     }
+  }
+
+  function removeImage(idx: number) {
+    const next = allImages.filter((_, i) => i !== idx);
+    setCoverIdx((prev) => {
+      if (idx < prev) return prev - 1;
+      if (idx === prev) return 0;
+      return prev;
+    });
+    setForm((p) => ({ ...p, coverImage: next[0] ?? "", pages: next.slice(1) }));
   }
 
   async function handleSubmit() {
@@ -167,8 +205,8 @@ export default function AddBeiitiePage() {
           shiwen: form.shiwen || null,
           sourceCredit: form.sourceCredit || null,
           sourceUrl: form.sourceUrl || null,
-          coverImage: form.coverImage || null,
-          pages: form.pages,
+          coverImage: allImages[coverIdx] || null,
+          pages: allImages.filter((_, i) => i !== coverIdx),
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
@@ -180,8 +218,6 @@ export default function AddBeiitiePage() {
   }
 
   const allImages = [form.coverImage, ...form.pages].filter(Boolean) as string[];
-  const isMultiPageNpm = selectedNpm && selectedNpm.pageCount === 1 &&
-    ["法帖", "拓片"].includes(selectedNpm.category);
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] p-6 pb-24">
@@ -255,9 +291,10 @@ export default function AddBeiitiePage() {
               </div>
             )}
 
-            {selectedNpm && isMultiPageNpm && (
-              <div className="text-xs text-amber-400/80 bg-amber-400/8 border border-amber-400/20 rounded-lg px-3 py-2">
-                ⚠ 此件可能有多頁，但尚未抓取。請先執行 <code className="font-mono">python pipeline/fetch_pages.py --id {selectedNpm.identifier}</code>，再重新查詢。
+            {fetchingPages && (
+              <div className="text-xs text-[var(--muted)] bg-[var(--card-bg)] border border-[var(--border)] rounded-lg px-3 py-2 flex items-center gap-2">
+                <span className="inline-block w-3 h-3 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin shrink-0" />
+                正在抓取分頁圖片…
               </div>
             )}
           </div>
@@ -266,29 +303,38 @@ export default function AddBeiitiePage() {
         {/* ── Image preview strip (shared) ── */}
         {allImages.length > 0 && (
           <div>
-            <p className="text-xs text-[var(--muted)] mb-2">圖片預覽 · {allImages.length} 頁</p>
+            <p className="text-xs text-[var(--muted)] mb-2">圖片預覽 · {allImages.length} 頁 · 點擊圖片設為封面</p>
             <div className="flex gap-2 overflow-x-auto pb-2">
-              {allImages.map((url, i) => (
-                <div key={i} className="relative shrink-0">
-                  <img
-                    src={url}
-                    alt=""
-                    className="h-24 w-auto rounded border border-[var(--border)] object-contain bg-[#0a0a0a]"
-                  />
-                  {i === 0 && (
-                    <span className="absolute top-1 left-1 text-[9px] bg-black/60 text-[var(--accent)] px-1 rounded">封面</span>
-                  )}
-                  <button
-                    onClick={() => {
-                      if (i === 0) setField("coverImage", "");
-                      else setForm((p) => ({ ...p, pages: p.pages.filter((_, pi) => pi !== i - 1) }));
-                    }}
-                    className="absolute top-1 right-1 text-[10px] bg-black/60 text-red-400 px-1 rounded hover:bg-red-900/40"
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+              {allImages.map((url, i) => {
+                const isCover = i === coverIdx;
+                return (
+                  <div key={i} className="relative shrink-0 group">
+                    <img
+                      src={url}
+                      alt=""
+                      onClick={() => { if (!isCover) setCoverIdx(i); }}
+                      className={`h-24 w-auto rounded border object-contain bg-[#0a0a0a] transition-colors ${
+                        isCover
+                          ? "border-[var(--accent)]"
+                          : "border-[var(--border)] cursor-pointer group-hover:border-[var(--accent)]/50"
+                      }`}
+                    />
+                    {isCover ? (
+                      <span className="absolute top-1 left-1 text-[9px] bg-[var(--accent)] text-black px-1.5 py-0.5 rounded font-medium">封面</span>
+                    ) : (
+                      <span className="absolute top-1 left-1 text-[9px] bg-black/70 text-[var(--accent)] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        設為封面
+                      </span>
+                    )}
+                    <button
+                      onClick={() => removeImage(i)}
+                      className="absolute top-1 right-1 text-[10px] bg-black/60 text-red-400 px-1 rounded hover:bg-red-900/40"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
