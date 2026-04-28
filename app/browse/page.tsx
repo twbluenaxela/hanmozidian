@@ -59,6 +59,8 @@ export default function BrowsePage() {
   const sentinelRef = useRef<HTMLDivElement>(null);
   // Prevents concurrent fetches from racing (observer fires before state settles)
   const fetchingRef = useRef(false);
+  // Incremented on every selection change so stale in-flight responses are discarded
+  const fetchGenRef = useRef(0);
 
   // Fetch sidebar filters once
   useEffect(() => {
@@ -72,8 +74,11 @@ export default function BrowsePage() {
       .catch(() => setFiltersLoading(false));
   }, []);
 
-  // Reset + fetch page 1 when selection changes
+  // Reset when selection changes; also unblock any in-flight fetch guard so the
+  // fresh page-1 request below isn't blocked by a previous selection's fetch.
   useEffect(() => {
+    fetchGenRef.current += 1;
+    fetchingRef.current = false;
     setImages([]);
     setPage(1);
     setHasMore(false);
@@ -91,6 +96,7 @@ export default function BrowsePage() {
       }
       if (fetchingRef.current) return;
       fetchingRef.current = true;
+      const gen = fetchGenRef.current;
       setImagesLoading(true);
       const params = new URLSearchParams({ page: String(pageNum), limit: "20" });
       if (selectedCalligraphers.length > 0)
@@ -100,6 +106,7 @@ export default function BrowsePage() {
       try {
         const res = await fetch(`/api/browse?${params}`);
         const data = await res.json();
+        if (fetchGenRef.current !== gen) return;
         setImages((prev) => {
           const incoming: GalleryImage[] = data.images ?? [];
           if (pageNum === 1) return incoming;
@@ -110,17 +117,26 @@ export default function BrowsePage() {
         setHasMore(data.hasMore);
         if (pageNum === 1) setCorpusOrdered(data.corpusOrdered ?? false);
       } finally {
-        fetchingRef.current = false;
-        setImagesLoading(false);
-        setInitialLoad(false);
+        if (fetchGenRef.current === gen) {
+          fetchingRef.current = false;
+          setImagesLoading(false);
+          setInitialLoad(false);
+        }
       }
     },
     [selectedCalligraphers, selectedWorks]
   );
 
-  // Trigger fetch when page or selection changes
+  // When selection changes (fetchImages gets a new reference), always fetch page 1.
+  // This avoids the race where the old page value (e.g. 3) was used before the
+  // reset effect's setPage(1) could take effect in the next render.
   useEffect(() => {
-    fetchImages(page);
+    fetchImages(1);
+  }, [fetchImages]);
+
+  // Fetch subsequent pages driven by the infinite-scroll sentinel.
+  useEffect(() => {
+    if (page > 1) fetchImages(page);
   }, [page, fetchImages]);
 
   // Infinite scroll via IntersectionObserver — only wire up when idle
