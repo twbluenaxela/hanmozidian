@@ -57,6 +57,14 @@ const AI_FIELDS: { key: keyof FormState; label: string }[] = [
   { key: "aiPractice",  label: "臨摹建議" },
 ];
 
+const GEMINI_MODELS = [
+  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash (快速)" },
+  { id: "gemini-2.5-pro-preview-05-06",   label: "Gemini 2.5 Pro (高品質)" },
+  { id: "gemini-2.0-flash",               label: "Gemini 2.0 Flash" },
+  { id: "gemini-1.5-flash",               label: "Gemini 1.5 Flash" },
+  { id: "gemini-1.5-pro",                 label: "Gemini 1.5 Pro" },
+];
+
 export default function EditBeiitiePage() {
   const router = useRouter();
   const params = useParams();
@@ -68,6 +76,9 @@ export default function EditBeiitiePage() {
   const [error, setError] = useState("");
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingPages, setUploadingPages] = useState(false);
+  const [geminiModel, setGeminiModel] = useState(GEMINI_MODELS[0].id);
+  const [generating, setGenerating] = useState(false);
+  const [genStatus, setGenStatus] = useState<{ type: "success" | "rate_limit" | "error"; msg: string } | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -125,6 +136,43 @@ export default function EditBeiitiePage() {
     } finally {
       if (field === "cover") setUploadingCover(false);
       else setUploadingPages(false);
+    }
+  }
+
+  async function handleGenerate() {
+    if (!form) return;
+    setGenerating(true);
+    setGenStatus(null);
+    try {
+      const res = await fetch(`/api/admin/beitie/${id}/generate-ai`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: geminiModel }),
+      });
+      const data = await res.json();
+      if (res.status === 429) {
+        setGenStatus({ type: "rate_limit", msg: data.message ?? "已達請求上限，請稍後再試" });
+        return;
+      }
+      if (!res.ok) {
+        setGenStatus({ type: "error", msg: data.message ?? "生成失敗" });
+        return;
+      }
+      const s = data.sections;
+      setForm((p) => p ? {
+        ...p,
+        aiHistory:   s.history   ?? p.aiHistory,
+        aiBiography: s.biography ?? p.aiBiography,
+        aiStyle:     s.style     ?? p.aiStyle,
+        aiInfluence: s.influence ?? p.aiInfluence,
+        aiStories:   s.stories   ?? p.aiStories,
+        aiPractice:  s.practice  ?? p.aiPractice,
+      } : p);
+      setGenStatus({ type: "success", msg: "生成完成，請確認內容後儲存" });
+    } catch {
+      setGenStatus({ type: "error", msg: "網路錯誤，請重試" });
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -271,12 +319,54 @@ export default function EditBeiitiePage() {
 
         {/* AI sections */}
         <div className="border-t border-[var(--border)] pt-5 mt-2">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs px-2 py-0.5 rounded-full border" style={{ background: "rgba(212,168,83,0.08)", borderColor: "rgba(212,168,83,0.2)", color: "var(--accent)" }}>
-              ✦ AI 解析內容
-            </span>
-            <span className="text-[10px] text-[var(--muted-dim)]">在此貼入 AI 生成的內容</span>
+          <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2 py-0.5 rounded-full border" style={{ background: "rgba(212,168,83,0.08)", borderColor: "rgba(212,168,83,0.2)", color: "var(--accent)" }}>
+                ✦ AI 解析內容
+              </span>
+            </div>
+            {/* Model selector + generate button */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={geminiModel}
+                onChange={(e) => setGeminiModel(e.target.value)}
+                disabled={generating}
+                className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
+              >
+                {GEMINI_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+                style={{ background: "rgba(212,168,83,0.15)", color: "var(--accent)", border: "1px solid rgba(212,168,83,0.3)" }}
+              >
+                {generating ? (
+                  <>
+                    <span className="inline-block w-3 h-3 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                    生成中…
+                  </>
+                ) : "✦ 生成 AI 解析"}
+              </button>
+            </div>
           </div>
+
+          {/* Generation status feedback */}
+          {genStatus && (
+            <div className={`mb-4 px-3 py-2.5 rounded-lg text-sm flex items-start gap-2 ${
+              genStatus.type === "success"    ? "bg-green-900/20 border border-green-700/40 text-green-400" :
+              genStatus.type === "rate_limit" ? "bg-yellow-900/20 border border-yellow-700/40 text-yellow-400" :
+                                               "bg-red-900/20 border border-red-700/40 text-red-400"
+            }`}>
+              <span className="shrink-0 mt-0.5">
+                {genStatus.type === "success" ? "✓" : genStatus.type === "rate_limit" ? "⏳" : "✕"}
+              </span>
+              <span>{genStatus.msg}</span>
+            </div>
+          )}
+
           <div className="space-y-4">
             {AI_FIELDS.map(({ key, label }) => (
               <Field key={key} label={label}>
