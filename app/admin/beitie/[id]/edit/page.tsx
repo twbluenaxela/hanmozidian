@@ -58,9 +58,11 @@ const AI_FIELDS: { key: keyof FormState; label: string }[] = [
 ];
 
 const GEMINI_MODELS = [
-  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash (快速)" },
-  { id: "gemini-2.5-pro-preview-05-06",   label: "Gemini 2.5 Pro (高品質)" },
-  { id: "gemini-2.0-flash",               label: "Gemini 2.0 Flash" },
+  { id: "gemini-2.0-flash",               label: "Gemini 2.0 Flash（預設）" },
+  { id: "gemini-2.5-flash",               label: "Gemini 2.5 Flash" },
+  { id: "gemini-2.5-pro",                 label: "Gemini 2.5 Pro" },
+  { id: "gemini-2.5-flash-preview-05-20", label: "Gemini 2.5 Flash Preview" },
+  { id: "gemini-2.5-pro-preview-05-06",   label: "Gemini 2.5 Pro Preview" },
   { id: "gemini-1.5-flash",               label: "Gemini 1.5 Flash" },
   { id: "gemini-1.5-pro",                 label: "Gemini 1.5 Pro" },
 ];
@@ -76,9 +78,11 @@ export default function EditBeiitiePage() {
   const [error, setError] = useState("");
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingPages, setUploadingPages] = useState(false);
-  const [geminiModel, setGeminiModel] = useState(GEMINI_MODELS[0].id);
+  const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
+  const [geminiModels, setGeminiModels] = useState(GEMINI_MODELS);
   const [generating, setGenerating] = useState(false);
-  const [genStatus, setGenStatus] = useState<{ type: "success" | "rate_limit" | "error"; msg: string } | null>(null);
+  const [genStatus, setGenStatus] = useState<{ type: "success" | "rate_limit" | "daily_quota" | "error"; msg: string } | null>(null);
+  const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -113,6 +117,27 @@ export default function EditBeiitiePage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  }, [id]);
+
+  useEffect(() => {
+    if (retryCountdown === null || retryCountdown <= 0) return;
+    const t = setTimeout(() => setRetryCountdown((n) => (n !== null ? n - 1 : null)), 1000);
+    return () => clearTimeout(t);
+  }, [retryCountdown]);
+
+  useEffect(() => {
+    if (!id) return;
+    fetch(`/api/admin/beitie/${id}/generate-ai`)
+      .then((r) => r.json())
+      .then((d) => {
+        const models = Array.isArray(d.models) ? d.models : [];
+        if (!models.length) return;
+        setGeminiModels(models);
+        setGeminiModel((prev) => (models.some((m: { id: string }) => m.id === prev) ? prev : models[0].id));
+      })
+      .catch(() => {
+        // keep fallback hardcoded list
+      });
   }, [id]);
 
   function setField(key: keyof FormState, val: string | string[]) {
@@ -151,7 +176,14 @@ export default function EditBeiitiePage() {
       });
       const data = await res.json();
       if (res.status === 429) {
-        setGenStatus({ type: "rate_limit", msg: data.message ?? "已達請求上限，請稍後再試" });
+        if (data.error === "daily_quota_exhausted") {
+          setRetryCountdown(null);
+          setGenStatus({ type: "daily_quota", msg: data.message ?? "今日免費額度已用完，請稍後再試" });
+          return;
+        }
+        const secs: number | null = data.retrySeconds ?? null;
+        setRetryCountdown(secs);
+        setGenStatus({ type: "rate_limit", msg: "" });
         return;
       }
       if (!res.ok) {
@@ -329,17 +361,21 @@ export default function EditBeiitiePage() {
             <div className="flex items-center gap-2 flex-wrap">
               <select
                 value={geminiModel}
-                onChange={(e) => setGeminiModel(e.target.value)}
+                onChange={(e) => {
+                  setGeminiModel(e.target.value);
+                  setRetryCountdown(null);
+                  setGenStatus(null);
+                }}
                 disabled={generating}
                 className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
               >
-                {GEMINI_MODELS.map((m) => (
+                {geminiModels.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
               <button
                 onClick={handleGenerate}
-                disabled={generating}
+                disabled={generating || (retryCountdown !== null && retryCountdown > 0)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
                 style={{ background: "rgba(212,168,83,0.15)", color: "var(--accent)", border: "1px solid rgba(212,168,83,0.3)" }}
               >
@@ -358,12 +394,26 @@ export default function EditBeiitiePage() {
             <div className={`mb-4 px-3 py-2.5 rounded-lg text-sm flex items-start gap-2 ${
               genStatus.type === "success"    ? "bg-green-900/20 border border-green-700/40 text-green-400" :
               genStatus.type === "rate_limit" ? "bg-yellow-900/20 border border-yellow-700/40 text-yellow-400" :
+              genStatus.type === "daily_quota" ? "bg-orange-900/20 border border-orange-700/40 text-orange-300" :
                                                "bg-red-900/20 border border-red-700/40 text-red-400"
             }`}>
               <span className="shrink-0 mt-0.5">
-                {genStatus.type === "success" ? "✓" : genStatus.type === "rate_limit" ? "⏳" : "✕"}
+                {genStatus.type === "success" ? "✓" : genStatus.type === "rate_limit" ? "⏳" : genStatus.type === "daily_quota" ? "⚠" : "✕"}
               </span>
-              <span>{genStatus.msg}</span>
+              {genStatus.type === "rate_limit" ? (
+                <span>
+                  已達 API 請求上限。
+                  {retryCountdown !== null && retryCountdown > 0
+                    ? <> 請等待 <strong>{retryCountdown}s</strong> 後重試。</>
+                    : retryCountdown === 0
+                    ? <> 可以重試了。</>
+                    : <> 請稍後再試。</>}
+                </span>
+              ) : genStatus.type === "daily_quota" ? (
+                <span>{genStatus.msg}</span>
+              ) : (
+                <span>{genStatus.msg}</span>
+              )}
             </div>
           )}
 
