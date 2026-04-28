@@ -97,6 +97,12 @@ export default function AdminPage() {
           </div>
           <div className="flex items-center gap-3">
             <button
+              onClick={() => router.push("/admin/beitie")}
+              className="px-3 py-1.5 text-sm rounded-lg border border-[var(--accent)]/30 text-[var(--accent)] hover:border-[var(--accent)] transition-colors"
+            >
+              碑帖頁面 →
+            </button>
+            <button
               onClick={() => router.push("/admin/export")}
               className="px-3 py-1.5 text-sm rounded-lg border border-[var(--border)] text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors"
             >

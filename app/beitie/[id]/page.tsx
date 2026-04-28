@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 
 interface BeitieDetail {
@@ -17,6 +17,9 @@ interface BeitieDetail {
   tags: string[];
   coverImage: string | null;
   pages: string[];
+  shiwen: string | null;
+  sourceCredit: string | null;
+  sourceUrl: string | null;
   aiHistory: string | null;
   aiBiography: string | null;
   aiStyle: string | null;
@@ -43,6 +46,10 @@ const AI_TABS = [
   { key: "aiPractice",  label: "臨摹建議" },
 ] as const;
 
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 5;
+const ZOOM_STEP = 0.5;
+
 function Prose({ text }: { text: string }) {
   return (
     <div className="text-sm leading-relaxed text-[var(--foreground)] space-y-4">
@@ -51,6 +58,128 @@ function Prose({ text }: { text: string }) {
           __html: para.replace(/\*\*(.*?)\*\*/g, "<strong class=\"text-[var(--accent)] font-semibold\">$1</strong>")
         }} />
       ))}
+    </div>
+  );
+}
+
+function ImageLightbox({
+  src,
+  alt,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  onClose: () => void;
+}) {
+  const [zoom, setZoom] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pinchRef = useRef<{ dist: number } | null>(null);
+
+  // Scroll wheel zoom (desktop)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z - e.deltaY * 0.001)));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // Pinch-to-zoom (mobile)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const dist = (t: TouchList) =>
+      Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) pinchRef.current = { dist: dist(e.touches) };
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || !pinchRef.current) return;
+      e.preventDefault();
+      const d = dist(e.touches);
+      const scale = d / pinchRef.current.dist;
+      pinchRef.current.dist = d;
+      setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * scale)));
+    };
+    const onTouchEnd = () => { pinchRef.current = null; };
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 flex flex-col"
+      onClick={onClose}
+    >
+      {/* Controls — tall enough for fingers (min 48px) */}
+      <div
+        className="shrink-0 flex items-center justify-between px-4 py-2"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="text-xs text-white/50">{Math.round(zoom * 100)}%</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + ZOOM_STEP))}
+            className="w-11 h-11 rounded-xl bg-white/10 active:bg-white/25 transition-colors text-white text-xl flex items-center justify-center"
+          >
+            +
+          </button>
+          <button
+            onClick={() => setZoom(1)}
+            className="px-3 h-11 rounded-xl bg-white/10 active:bg-white/25 transition-colors text-white text-xs"
+          >
+            1:1
+          </button>
+          <button
+            onClick={() => setZoom((z) => Math.max(MIN_ZOOM, z - ZOOM_STEP))}
+            className="w-11 h-11 rounded-xl bg-white/10 active:bg-white/25 transition-colors text-white text-xl flex items-center justify-center"
+          >
+            −
+          </button>
+          <button
+            onClick={onClose}
+            className="w-11 h-11 rounded-xl bg-white/10 active:bg-white/25 transition-colors text-white/70 ml-1 flex items-center justify-center"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+
+      {/* Image area */}
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-auto flex items-start justify-center p-4"
+        onClick={(e) => e.stopPropagation()}
+        style={{ cursor: zoom > 1 ? "grab" : "zoom-out", touchAction: "pan-x pan-y" }}
+      >
+        <img
+          src={src}
+          alt={alt}
+          style={{
+            transform: `scale(${zoom})`,
+            transformOrigin: "top center",
+            transition: "transform 0.1s ease",
+            maxWidth: "100%",
+          }}
+          draggable={false}
+        />
+      </div>
     </div>
   );
 }
@@ -64,6 +193,7 @@ export default function BeitieDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<typeof AI_TABS[number]["key"]>("aiHistory");
   const [activeImg, setActiveImg] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -94,53 +224,81 @@ export default function BeitieDetailPage() {
   const activeContent = item[activeTab];
 
   return (
-    <div className="flex flex-col h-[100dvh] bg-[var(--background)] text-[var(--foreground)] overflow-hidden">
-      {/* Top bar */}
-      <div className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] bg-[var(--card-bg)]">
-        <button
-          onClick={() => router.push("/beitie")}
-          className="text-sm text-[var(--muted)] hover:text-[var(--accent)] transition-colors"
-        >
-          ← 碑帖
-        </button>
-        <span className="text-[var(--border)]">/</span>
-        <span className="font-display text-sm text-[var(--accent)]">{item.title}</span>
-      </div>
+    <>
+      {/* Lightbox */}
+      {lightboxOpen && allImages[activeImg] && (
+        <ImageLightbox
+          src={allImages[activeImg]}
+          alt={item.title}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
 
-      {/* Body — two columns on md+, stacked on mobile */}
-      <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
-        {/* LEFT: image + metadata */}
-        <div className="md:w-[320px] md:shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[var(--border)] overflow-y-auto">
-          {/* Main image */}
-          <div className="bg-[#060606] flex items-center justify-center" style={{ minHeight: 240 }}>
+      <div className="flex flex-col min-h-[100dvh] bg-[var(--background)] text-[var(--foreground)]">
+        {/* Top bar */}
+        <div className="sticky top-0 z-10 flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] bg-[var(--card-bg)]">
+          <button
+            onClick={() => router.push("/beitie")}
+            className="text-sm text-[var(--muted)] hover:text-[var(--accent)] transition-colors"
+          >
+            ← 碑帖
+          </button>
+          <span className="text-[var(--border)]">/</span>
+          <span className="font-display text-sm text-[var(--accent)] truncate">{item.title}</span>
+        </div>
+
+        {/* Single scrollable column */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Title + badges */}
+          <div className="px-5 pt-6 pb-4">
+            <div className="flex items-end gap-3 mb-3 flex-wrap">
+              <h1
+                className="font-display font-black text-4xl text-[var(--accent)]"
+                style={{ textShadow: "0 0 32px rgba(212,168,83,0.15)" }}
+              >
+                {item.title}
+              </h1>
+              <span className="font-display text-lg text-[var(--muted)]">{item.author}</span>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <span className="text-xs px-2.5 py-1 rounded" style={{ background: s.bg, color: s.text }}>
+                {item.style}
+              </span>
+              <span className="text-xs px-2.5 py-1 rounded bg-[var(--card-bg)] border border-[var(--border)] text-[var(--muted)]">
+                {item.dynasty}{item.yearLabel ? ` · ${item.yearLabel}` : ""}
+              </span>
+            </div>
+          </div>
+
+          {/* Hero image */}
+          <div className="bg-[#060606] border-y border-[var(--border)] flex items-center justify-center" style={{ minHeight: 240 }}>
             {allImages.length > 0 ? (
               <img
                 src={allImages[activeImg]}
                 alt={item.title}
-                className="max-h-72 md:max-h-96 object-contain"
+                onClick={() => setLightboxOpen(true)}
+                className="max-h-[55vh] w-full object-contain cursor-zoom-in"
               />
             ) : (
-              <div className="flex items-center justify-center h-56 w-full">
-                <span
-                  className="font-display select-none"
-                  style={{ fontSize: 96, color: s.text, opacity: 0.18 }}
-                >
-                  {[...item.title][0]}
-                </span>
-              </div>
+              <span
+                className="font-display select-none"
+                style={{ fontSize: 96, color: s.text, opacity: 0.15 }}
+              >
+                {[...item.title][0]}
+              </span>
             )}
           </div>
 
-          {/* Page thumbnails */}
+          {/* Page thumbnail strip */}
           {allImages.length > 1 && (
-            <div className="px-3 py-3 border-t border-[var(--border)] bg-[var(--card-bg)]">
+            <div className="px-4 py-3 bg-[var(--card-bg)] border-b border-[var(--border)]">
               <p className="text-[10px] text-[var(--muted)] mb-2">分頁 · {allImages.length} 頁</p>
-              <div className="flex gap-2 overflow-x-auto">
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
                 {allImages.map((url, i) => (
                   <button
                     key={i}
                     onClick={() => setActiveImg(i)}
-                    className="shrink-0 w-10 h-14 rounded overflow-hidden border transition-all"
+                    className="shrink-0 w-14 h-[4.5rem] rounded overflow-hidden border transition-all active:scale-95"
                     style={{
                       borderColor: activeImg === i ? "var(--accent)" : "var(--border)",
                       opacity: activeImg === i ? 1 : 0.5,
@@ -153,8 +311,8 @@ export default function BeitieDetailPage() {
             </div>
           )}
 
-          {/* Metadata */}
-          <div className="px-4 py-4 space-y-2 border-t border-[var(--border)]">
+          {/* Metadata + tags + source */}
+          <div className="px-5 py-4 border-b border-[var(--border)] space-y-2">
             {[
               ["作者", item.author],
               ["朝代", item.dynasty],
@@ -165,13 +323,12 @@ export default function BeitieDetailPage() {
             ]
               .filter(([, v]) => v)
               .map(([k, v]) => (
-                <div key={k} className="flex justify-between items-baseline border-b border-[var(--border)]/50 pb-1.5">
+                <div key={k} className="flex justify-between items-baseline border-b border-[var(--border)]/40 pb-1.5">
                   <span className="text-xs text-[var(--muted)]">{k}</span>
                   <span className="text-xs text-[var(--foreground)] font-medium">{v}</span>
                 </div>
               ))}
 
-            {/* Tags */}
             {item.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {item.tags.map((tag) => (
@@ -189,49 +346,60 @@ export default function BeitieDetailPage() {
                 ))}
               </div>
             )}
-          </div>
-        </div>
 
-        {/* RIGHT: heading + AI tabs */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Heading */}
-          <div className="shrink-0 px-6 pt-6 pb-4 border-b border-[var(--border)]">
-            <div className="flex items-end gap-4 mb-3">
-              <h1 className="font-display font-black text-4xl text-[var(--accent)]"
-                style={{ textShadow: "0 0 32px rgba(212,168,83,0.15)" }}>
-                {item.title}
-              </h1>
-              <span className="font-display text-lg text-[var(--muted)] mb-1">{item.author}</span>
-            </div>
-            <div className="flex gap-2">
-              <span className="text-xs px-2.5 py-1 rounded" style={{ background: s.bg, color: s.text }}>
-                {item.style}
-              </span>
-              <span className="text-xs px-2.5 py-1 rounded bg-[var(--card-bg)] border border-[var(--border)] text-[var(--muted)]">
-                {item.dynasty}{item.yearLabel ? ` · ${item.yearLabel}` : ""}
-              </span>
-            </div>
+            {item.sourceCredit && (
+              <div className="flex justify-between items-baseline pt-1">
+                <span className="text-xs text-[var(--muted)]">來源</span>
+                {item.sourceUrl ? (
+                  <a
+                    href={item.sourceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[var(--accent)] hover:underline"
+                  >
+                    {item.sourceCredit}
+                  </a>
+                ) : (
+                  <span className="text-xs text-[var(--foreground)]">{item.sourceCredit}</span>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* 釋文 */}
+          {item.shiwen && (
+            <details className="border-b border-[var(--border)] group">
+              <summary className="px-5 py-3 text-xs text-[var(--muted)] cursor-pointer select-none hover:text-[var(--foreground)] transition-colors list-none flex items-center gap-2">
+                <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                釋文
+              </summary>
+              <div className="px-5 pb-4 text-sm font-display leading-loose text-[var(--foreground)] tracking-wider">
+                {item.shiwen}
+              </div>
+            </details>
+          )}
 
           {/* AI content */}
           {!item.aiGeneratedAt ? (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[var(--muted)]">
+            <div className="flex flex-col items-center justify-center gap-3 text-[var(--muted)] py-16">
               <p className="text-sm">AI 解析尚未生成</p>
-              <p className="text-xs text-[var(--muted-dim)]">請在管理後台觸發生成</p>
+              <p className="text-xs text-[var(--muted-dim)]">請在管理後台輸入內容</p>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col overflow-hidden">
+            <div className="pb-20">
               {/* AI label */}
-              <div className="shrink-0 flex items-center gap-2 px-6 pt-4">
-                <span className="text-[10px] px-2.5 py-1 rounded-full border"
-                  style={{ background: "rgba(212,168,83,0.08)", borderColor: "rgba(212,168,83,0.2)", color: "var(--accent)" }}>
+              <div className="flex items-center gap-2 px-5 pt-5 pb-3">
+                <span
+                  className="text-[10px] px-2.5 py-1 rounded-full border"
+                  style={{ background: "rgba(212,168,83,0.08)", borderColor: "rgba(212,168,83,0.2)", color: "var(--accent)" }}
+                >
                   ✦ AI 解析
                 </span>
                 <span className="text-[10px] text-[var(--muted-dim)]">由 AI 生成，僅供參考</span>
               </div>
 
               {/* Tabs */}
-              <div className="shrink-0 flex border-b border-[var(--border)] mt-3 px-6 overflow-x-auto">
+              <div className="flex border-b border-[var(--border)] px-5 overflow-x-auto">
                 {AI_TABS.map((tab) => (
                   <button
                     key={tab.key}
@@ -249,7 +417,7 @@ export default function BeitieDetailPage() {
               </div>
 
               {/* Tab content */}
-              <div key={activeTab} className="flex-1 overflow-y-auto px-6 py-5">
+              <div key={activeTab} className="px-5 py-5">
                 {activeContent ? (
                   <Prose text={activeContent} />
                 ) : (
@@ -260,6 +428,6 @@ export default function BeitieDetailPage() {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
