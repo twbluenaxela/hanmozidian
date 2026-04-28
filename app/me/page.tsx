@@ -370,6 +370,9 @@ export default function MePage() {
     );
   }
 
+  const adminUids = new Set((process.env.NEXT_PUBLIC_ADMIN_UIDS ?? "").split(",").map((s) => s.trim()).filter(Boolean));
+  const isAdmin = adminUids.has(user.uid);
+
   const photoURL = user.photoURL ? enlargeGooglePhoto(user.photoURL) : null;
   const initials = (user.displayName ?? user.email ?? "?")[0].toUpperCase();
 
@@ -390,15 +393,32 @@ export default function MePage() {
         )}
         <div className="min-w-0">
           {user.displayName && (
-            <p className="font-display text-xl text-[var(--foreground)] truncate">{user.displayName}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-display text-xl text-[var(--foreground)] truncate">{user.displayName}</p>
+              {isAdmin && (
+                <span className="shrink-0 text-xs font-bold px-1.5 py-0.5 rounded-md bg-[var(--accent)] text-black">
+                  ⚙️ Admin
+                </span>
+              )}
+            </div>
           )}
           <p className="text-sm text-[var(--muted)] truncate">{user.email}</p>
-          <button
-            onClick={() => signOut(auth)}
-            className="mt-2 text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors underline underline-offset-2"
-          >
-            登出
-          </button>
+          <div className="flex items-center gap-3 mt-2">
+            {isAdmin && (
+              <button
+                onClick={() => router.push("/admin")}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[var(--card-bg)] border border-[var(--border)] text-[var(--foreground)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors font-medium"
+              >
+                管理後台 →
+              </button>
+            )}
+            <button
+              onClick={() => signOut(auth)}
+              className="text-xs text-[var(--muted)] hover:text-[var(--foreground)] transition-colors underline underline-offset-2"
+            >
+              登出
+            </button>
+          </div>
         </div>
       </div>
 
