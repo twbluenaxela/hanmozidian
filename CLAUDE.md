@@ -15,6 +15,11 @@
 - **Firebase Auth** (Google + Email/Password)
 - **Cloudflare R2** (S3-compatible) for production images
 
+## 設計系統 & 文件
+
+- **→ `STYLE.md`** — 統一視覺語言：色盤、字體、互動元件、動畫、佈局原則。UI 工作前必讀。
+- **→ `app/AGENT.md`** — 首頁架構與設計決策（為什麼用 mounted guard、為什麼用 `<img>` 而非 `<Image>` 等）。
+
 ## 關鍵檔案位置
 
 | 想找什麼 | 去哪裡 |
@@ -26,6 +31,7 @@
 | 收藏功能 | `lib/favorites.ts` |
 | 集字儲存 | `lib/savedJizi.ts` |
 | 首頁 | `app/page.tsx` |
+| 首頁架構文件 | `app/AGENT.md` |
 | 字典詳情頁 | `app/character/[char]/page.tsx` |
 | 集字工坊（最複雜頁面） | `app/jizi/page.tsx` |
 | 碑帖瀏覽 | `app/browse/page.tsx` |
