@@ -12,7 +12,7 @@ export async function GET(
   const id = parseInt(idStr);
   if (isNaN(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  const item = getBeitieById(id);
+  const item = await getBeitieById(id);
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   return NextResponse.json({ item });
@@ -27,7 +27,7 @@ export async function POST(
   const id = parseInt(idStr);
   if (isNaN(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  const item = getBeitieById(id);
+  const item = await getBeitieById(id);
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const SECTIONS = [
@@ -51,7 +51,7 @@ export async function POST(
     results[section.key] = (msg.content[0] as { text: string }).text.trim();
   }
 
-  saveAiSummary(id, {
+  await saveAiSummary(id, {
     history:   results.history,
     biography: results.biography,
     style:     results.style,

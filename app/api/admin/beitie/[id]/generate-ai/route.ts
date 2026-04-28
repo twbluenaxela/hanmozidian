@@ -60,13 +60,13 @@ export async function POST(
   const id = parseInt(rawId, 10);
   if (isNaN(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  const item = getBeitieById(id);
+  const item = await getBeitieById(id);
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
 
-  let model = "gemini-2.0-flash";
+  let model = "gemini-2.5-flash";
   try {
     const body = await req.json();
     if (body.model && ALLOWED_MODELS.includes(body.model)) model = body.model;

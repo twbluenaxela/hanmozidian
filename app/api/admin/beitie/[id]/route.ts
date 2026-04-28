@@ -9,7 +9,7 @@ export async function PATCH(
   const id = parseInt(idStr);
   if (isNaN(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  const existing = getBeitieById(id);
+  const existing = await getBeitieById(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   let body: Record<string, unknown>;
@@ -19,7 +19,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  updateBeitie(id, {
+  await updateBeitie(id, {
     ...(body.title !== undefined && { title: body.title as string }),
     ...(body.author !== undefined && { author: body.author as string }),
     ...(body.dynasty !== undefined && { dynasty: body.dynasty as string }),
@@ -55,9 +55,9 @@ export async function DELETE(
   const id = parseInt(idStr);
   if (isNaN(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  const existing = getBeitieById(id);
+  const existing = await getBeitieById(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  deleteBeitie(id);
+  await deleteBeitie(id);
   return NextResponse.json({ ok: true });
 }

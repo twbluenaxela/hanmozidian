@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listBeitie, insertBeitie } from "@/lib/db/beitie-queries";
 
 export async function GET() {
-  const items = listBeitie();
+  const items = await listBeitie();
   return NextResponse.json({ items });
 }
 
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "title, author, dynasty, style, styleSlug are required" }, { status: 400 });
   }
 
-  const id = insertBeitie({
+  const id = await insertBeitie({
     title: title as string,
     author: author as string,
     dynasty: dynasty as string,

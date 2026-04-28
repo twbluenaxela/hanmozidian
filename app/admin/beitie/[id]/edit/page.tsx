@@ -75,10 +75,11 @@ export default function EditBeiitiePage() {
   const [form, setForm] = useState<FormState | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingD1, setUploadingD1] = useState(false);
   const [error, setError] = useState("");
   const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingPages, setUploadingPages] = useState(false);
-  const [geminiModel, setGeminiModel] = useState("gemini-2.0-flash");
+  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
   const [geminiModels, setGeminiModels] = useState(GEMINI_MODELS);
   const [generating, setGenerating] = useState(false);
   const [genStatus, setGenStatus] = useState<{ type: "success" | "rate_limit" | "daily_quota" | "error"; msg: string } | null>(null);
@@ -208,7 +209,7 @@ export default function EditBeiitiePage() {
     }
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(uploadToD1 = false) {
     if (!form) return;
     if (!form.title || !form.author || !form.dynasty || !form.style || !form.styleSlug) {
       setError("標題、作者、朝代、書體為必填");
@@ -251,10 +252,19 @@ export default function EditBeiitiePage() {
         }),
       });
       if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
+
+      if (uploadToD1) {
+        setUploadingD1(true);
+        const upRes = await fetch(`/api/admin/beitie/${id}/upload-d1`, { method: "POST" });
+        const upData = await upRes.json();
+        if (!upRes.ok) throw new Error(upData.error ?? "Upload to D1 failed");
+      }
+
       router.push("/admin/beitie");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Submit error");
       setSubmitting(false);
+      setUploadingD1(false);
     }
   }
 
@@ -434,9 +444,13 @@ export default function EditBeiitiePage() {
         {error && <p className="text-sm text-red-400 bg-red-900/10 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>}
 
         <div className="flex gap-3 pt-2">
-          <button onClick={handleSubmit} disabled={submitting}
+          <button onClick={() => handleSubmit(false)} disabled={submitting}
             className="px-6 py-2 rounded-lg bg-[var(--accent)] text-black text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
             {submitting ? "儲存中…" : "儲存變更"}
+          </button>
+          <button onClick={() => handleSubmit(true)} disabled={submitting || uploadingD1}
+            className="px-4 py-2 rounded-lg border border-[var(--accent)] text-sm text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors disabled:opacity-50">
+            {submitting || uploadingD1 ? "上傳中…" : "儲存並上傳 D1"}
           </button>
           <button onClick={() => router.push("/admin/beitie")}
             className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors">
