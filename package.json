@@ -10,7 +10,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "sync:beitie:d1": "node scripts/sync-beitie-to-d1.mjs",
-    "deploy": "node -e \"const db = require('better-sqlite3')('data/hanmodict.db'); db.pragma('wal_checkpoint(TRUNCATE)'); db.close();\" && fly deploy"
+    "deploy": "node -e \"const db = require('better-sqlite3')('data/shufazidian.db'); db.pragma('wal_checkpoint(TRUNCATE)'); db.close();\" && fly deploy"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

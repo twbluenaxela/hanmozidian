@@ -6,7 +6,7 @@ import path from "path";
 
 // process.cwd() is /app in the Docker container and the project root locally.
 // This is more reliable than hardcoding /app/
-const dbPath = path.resolve(process.cwd(), "data", "hanmodict.db");
+const dbPath = path.resolve(process.cwd(), "data", "shufazidian.db");
 const dbDir = path.dirname(dbPath);
 
 if (!fs.existsSync(dbDir)) {
