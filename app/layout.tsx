@@ -12,7 +12,7 @@ const notoSerifTC = Noto_Serif_TC({
 });
 
 export const metadata: Metadata = {
-  title: "書法字典",
+  title: "翰墨字典",
   description:
     "Chinese calligraphy dictionary for calligraphers — browse characters across 篆, 隸, 楷, 行, 草 styles by famous calligraphers and works.",
   other: {

@@ -185,7 +185,7 @@ export default function HomePage() {
             fontSize: 34, letterSpacing: "0.1em",
             color: "#d4a853", lineHeight: 1,
           }}>
-            書法字典
+            翰墨字典
           </h1>
         </div>
 

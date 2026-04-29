@@ -11,7 +11,7 @@ interface WorkEntry {
 
 const INDEX_PATH = path.resolve(process.cwd(), "pipeline/data/works_index.json");
 const NPM_BASE = "https://digitalarchive.npm.gov.tw";
-const UA = "ShufazidianResearch/1.0 (educational calligraphy dictionary)";
+const UA = "HanmodictResearch/1.0 (educational calligraphy dictionary)";
 
 function loadIndex(): Record<string, WorkEntry> {
   if (!fs.existsSync(INDEX_PATH)) return {};

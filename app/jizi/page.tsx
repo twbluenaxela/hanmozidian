@@ -247,7 +247,7 @@ export default function JiziPage() {
         style: { transform: "none" },
       });
       const link = document.createElement("a");
-      link.download = `shufa-${Date.now()}.png`;
+      link.download = `hanmo-${Date.now()}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err) {

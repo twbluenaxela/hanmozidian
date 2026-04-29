@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import path from "path";
 
 const dbPath =
-  process.env.DATABASE_PATH || path.join(process.cwd(), "data", "shufazidian.db");
+  process.env.DATABASE_PATH || path.join(process.cwd(), "data", "hanmodict.db");
 const sqlite = new Database(dbPath);
 
 sqlite.pragma("journal_mode = WAL");

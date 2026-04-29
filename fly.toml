@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for shufazidian on 2026-04-16T07:53:27Z
+# fly.toml app configuration file generated for hanmodict on 2026-04-16T07:53:27Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'shufazidian'
+app = 'hanmodict'
 primary_region = 'lhr'
 
 [build]

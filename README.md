@@ -1,6 +1,6 @@
-# 書法字典 (Chinese Calligraphy Dictionary)
+# 翰墨字典 (Chinese Calligraphy Dictionary)
 
-**Live site: [shufazidian.fly.io](https://shufazidian.fly.io)**
+**Live site: [hanmodict.fly.io](https://hanmodict.fly.io)**
 
 A reference tool for calligraphers to look up how famous historical calligraphers wrote specific characters across different script styles (金文、小篆、隸書、楷書、行書、草書).
 
@@ -69,7 +69,7 @@ python scripts/scrape_zi_tools.py --chars "永和九年"
 python scripts/scrape_zi_tools.py \
   --chars-file data/seed_texts/lan_ting_xu.txt \
   --output-dir public/images \
-  --db data/shufazidian.db \
+  --db data/hanmodict.db \
   --rate 2.0
 
 # zhuojg dataset — folder names like 楷-柳公权 encode style + author/work
@@ -81,7 +81,7 @@ python scripts/ingest_zhuojg.py \
 # Real ingest (idempotent: --clean-source resets DB rows for source=zhuojg):
 python scripts/ingest_zhuojg.py \
   --calligrapher-dir data/zhuojg/chinese-calligraphy-dataset-with-calligrapher \
-  --output-dir public/images --db data/shufazidian.db --clean-source
+  --output-dir public/images --db data/hanmodict.db --clean-source
 ```
 
 Python dependencies:
@@ -173,7 +173,7 @@ python scripts/upload_to_r2.py --cleanup
 
 ## Deploying to Fly.io
 
-The app is packaged for Fly.io. The populated `data/shufazidian.db` is baked into the Docker image at build time; image binaries live on Cloudflare R2. There is no persistent Fly volume — each `fly deploy` rebuilds the image with your latest local DB snapshot.
+The app is packaged for Fly.io. The populated `data/hanmodict.db` is baked into the Docker image at build time; image binaries live on Cloudflare R2. There is no persistent Fly volume — each `fly deploy` rebuilds the image with your latest local DB snapshot.
 
 ```bash
 # 1. Install flyctl and log in
@@ -193,10 +193,10 @@ fly secrets set \
   USE_R2="true"
 
 # 4. Ensure the local DB is populated (the Dockerfile COPY will fail if not)
-ls -lh data/shufazidian.db
+ls -lh data/hanmodict.db
 
 # 5. Flush WAL contents into the main DB file before tarring up the build context
-sqlite3 data/shufazidian.db "PRAGMA wal_checkpoint(TRUNCATE);"
+sqlite3 data/hanmodict.db "PRAGMA wal_checkpoint(TRUNCATE);"
 
 # 6. Deploy
 fly deploy
@@ -217,7 +217,7 @@ python scripts/ingest_zhuojg.py [...]
 python scripts/upload_to_r2.py --workers 16
 
 # 3. Checkpoint WAL, then deploy
-sqlite3 data/shufazidian.db "PRAGMA wal_checkpoint(TRUNCATE);"
+sqlite3 data/hanmodict.db "PRAGMA wal_checkpoint(TRUNCATE);"
 fly deploy
 ```
 
