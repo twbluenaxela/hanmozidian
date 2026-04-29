@@ -4,7 +4,8 @@
  * the hook must map imageId → id so list keys are never undefined.
  */
 
-import { addFavorite, removeFavorite } from "@/lib/favorites";
+import { renderHook } from "@testing-library/react";
+import { addFavorite, removeFavorite, useFavorites } from "@/lib/favorites";
 
 const mockSetDoc = jest.fn();
 const mockDeleteDoc = jest.fn();
@@ -74,23 +75,19 @@ describe("removeFavorite", () => {
 });
 
 describe("useFavorites hook", () => {
-  it("returns empty array when uid is null", async () => {
-    const { renderHook } = await import("@testing-library/react");
-    const { useFavorites } = await import("@/lib/favorites");
+  it("returns empty array when uid is null", () => {
     const { result } = renderHook(() => useFavorites(null));
     expect(result.current).toEqual([]);
     expect(mockOnSnapshot).not.toHaveBeenCalled();
   });
 
-  it("subscribes when uid is provided", async () => {
+  it("subscribes when uid is provided", () => {
     mockOnSnapshot.mockReturnValue(() => {});
-    const { renderHook } = await import("@testing-library/react");
-    const { useFavorites } = await import("@/lib/favorites");
     renderHook(() => useFavorites("uid1"));
     expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
   });
 
-  it("maps imageId to id (regression: was undefined before fix)", async () => {
+  it("maps imageId to id (regression: was undefined before fix)", () => {
     const fakeDocs = [
       { data: () => ({ imageId: 99, character: "永", imagePath: "/x.jpg", styleSlug: "kai", calligrapherName: null }) },
     ];
@@ -98,13 +95,11 @@ describe("useFavorites hook", () => {
       cb({ docs: fakeDocs });
       return () => {};
     });
-    const { renderHook } = await import("@testing-library/react");
-    const { useFavorites } = await import("@/lib/favorites");
     const { result } = renderHook(() => useFavorites("uid1"));
     expect(result.current[0].id).toBe(99);
   });
 
-  it("returns multiple favorites in snapshot order", async () => {
+  it("returns multiple favorites in snapshot order", () => {
     const fakeDocs = [
       { data: () => ({ imageId: 1, character: "永" }) },
       { data: () => ({ imageId: 2, character: "山" }) },
@@ -114,17 +109,13 @@ describe("useFavorites hook", () => {
       cb({ docs: fakeDocs });
       return () => {};
     });
-    const { renderHook } = await import("@testing-library/react");
-    const { useFavorites } = await import("@/lib/favorites");
     const { result } = renderHook(() => useFavorites("uid1"));
     expect(result.current).toHaveLength(3);
     expect(result.current.map((f) => f.id)).toEqual([1, 2, 3]);
   });
 
-  it("clears list when uid becomes null", async () => {
+  it("clears list when uid becomes null", () => {
     mockOnSnapshot.mockReturnValue(() => {});
-    const { renderHook } = await import("@testing-library/react");
-    const { useFavorites } = await import("@/lib/favorites");
     const { result, rerender } = renderHook(({ uid }: { uid: string | null }) => useFavorites(uid), {
       initialProps: { uid: "uid1" as string | null },
     });
@@ -132,11 +123,9 @@ describe("useFavorites hook", () => {
     expect(result.current).toEqual([]);
   });
 
-  it("unsubscribes on unmount", async () => {
+  it("unsubscribes on unmount", () => {
     const unsubscribe = jest.fn();
     mockOnSnapshot.mockReturnValue(unsubscribe);
-    const { renderHook } = await import("@testing-library/react");
-    const { useFavorites } = await import("@/lib/favorites");
     const { unmount } = renderHook(() => useFavorites("uid1"));
     unmount();
     expect(unsubscribe).toHaveBeenCalledTimes(1);

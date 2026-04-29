@@ -66,7 +66,7 @@ function mockFetch(workResponse: object, patchSpy = jest.fn()) {
 async function renderAndWait(workResponse = makeWorkResponse()) {
   const patchSpy = mockFetch(workResponse);
   render(<AnnotatePage />);
-  await waitFor(() => screen.getByText("Test Work"));
+  await waitFor(() => screen.getAllByText("Test Work"));
   return patchSpy;
 }
 
@@ -180,7 +180,7 @@ describe("saveDraft – network error handling", () => {
       return Promise.resolve({ json: () => Promise.resolve(makeWorkResponse()) });
     });
     render(<AnnotatePage />);
-    await waitFor(() => screen.getByText("Test Work"));
+    await waitFor(() => screen.getAllByText("Test Work"));
 
     await act(async () => {
       fireEvent.click(screen.getByText("儲存草稿"));

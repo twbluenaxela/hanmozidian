@@ -3,7 +3,8 @@
  * Covers: save limit enforcement, undefined sanitization, delete, hook wiring.
  */
 
-import { saveJizi, deleteSavedJizi, MAX_SAVED_JIZI } from "@/lib/savedJizi";
+import { renderHook } from "@testing-library/react";
+import { saveJizi, deleteSavedJizi, MAX_SAVED_JIZI, useSavedJizi } from "@/lib/savedJizi";
 
 // ── Firebase mocks ────────────────────────────────────────────────────────────
 
@@ -148,23 +149,19 @@ describe("deleteSavedJizi", () => {
 });
 
 describe("useSavedJizi hook", () => {
-  it("returns empty array when uid is null", async () => {
-    const { renderHook } = await import("@testing-library/react");
-    const { useSavedJizi } = await import("@/lib/savedJizi");
+  it("returns empty array when uid is null", () => {
     const { result } = renderHook(() => useSavedJizi(null));
     expect(result.current).toEqual([]);
     expect(mockOnSnapshot).not.toHaveBeenCalled();
   });
 
-  it("subscribes to Firestore when uid is provided", async () => {
-    mockOnSnapshot.mockReturnValue(() => {}); // unsubscribe fn
-    const { renderHook } = await import("@testing-library/react");
-    const { useSavedJizi } = await import("@/lib/savedJizi");
+  it("subscribes to Firestore when uid is provided", () => {
+    mockOnSnapshot.mockReturnValue(() => {});
     renderHook(() => useSavedJizi("uid1"));
     expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
   });
 
-  it("maps Firestore docs to SavedJizi objects", async () => {
+  it("maps Firestore docs to SavedJizi objects", () => {
     const fakeDocs = [
       { id: "doc1", data: () => ({ text: "永", style: "kai", savedAt: 1 }) },
     ];
@@ -172,19 +169,15 @@ describe("useSavedJizi hook", () => {
       cb({ docs: fakeDocs });
       return () => {};
     });
-    const { renderHook } = await import("@testing-library/react");
-    const { useSavedJizi } = await import("@/lib/savedJizi");
     const { result } = renderHook(() => useSavedJizi("uid1"));
     expect(result.current).toHaveLength(1);
     expect(result.current[0].id).toBe("doc1");
     expect(result.current[0].text).toBe("永");
   });
 
-  it("unsubscribes on unmount", async () => {
+  it("unsubscribes on unmount", () => {
     const unsubscribe = jest.fn();
     mockOnSnapshot.mockReturnValue(unsubscribe);
-    const { renderHook } = await import("@testing-library/react");
-    const { useSavedJizi } = await import("@/lib/savedJizi");
     const { unmount } = renderHook(() => useSavedJizi("uid1"));
     unmount();
     expect(unsubscribe).toHaveBeenCalledTimes(1);

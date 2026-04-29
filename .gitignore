@@ -69,5 +69,9 @@ venv/
 # NPM annotation pipeline — local dev tool only, not for production
 /pipeline/
 
+# Social campaign — local marketing tool only, not for production
+/app/campaign/
+/public/campaign/
+
 .wrangler/
 .wrangler/

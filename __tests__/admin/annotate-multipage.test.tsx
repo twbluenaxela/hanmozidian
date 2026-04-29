@@ -74,7 +74,7 @@ function mockFetch(response: object) {
 async function setup(response: object = makeResponse()) {
   mockFetch(response);
   render(<AnnotatePage />);
-  await waitFor(() => screen.getByText("Test Work"));
+  await waitFor(() => screen.getAllByText("Test Work"));
 }
 
 function getCanvas(): HTMLElement {

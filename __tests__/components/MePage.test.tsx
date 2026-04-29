@@ -233,7 +233,7 @@ describe("SavedJiziCard", () => {
   }
 
   it("Edit button writes the composition to sessionStorage and pushes /jizi", async () => {
-    mockUseSavedJizi.mockReturnValueOnce([makeJiziItem()]);
+    mockUseSavedJizi.mockReturnValue([makeJiziItem()]);
     await openJiziTab();
 
     await userEvent.click(screen.getByRole("button", { name: "編輯" }));
@@ -256,7 +256,7 @@ describe("SavedJiziCard", () => {
   });
 
   it("Delete: first click reveals 確認刪除, second click invokes deleteSavedJizi(uid, id)", async () => {
-    mockUseSavedJizi.mockReturnValueOnce([makeJiziItem({ id: "item-1" })]);
+    mockUseSavedJizi.mockReturnValue([makeJiziItem({ id: "item-1" })]);
     await openJiziTab();
 
     // First click — switches to confirm state
@@ -271,7 +271,7 @@ describe("SavedJiziCard", () => {
   });
 
   it("Delete: blurring the initial 刪除 button reverts confirming state without deleting", async () => {
-    mockUseSavedJizi.mockReturnValueOnce([makeJiziItem({ id: "item-1" })]);
+    mockUseSavedJizi.mockReturnValue([makeJiziItem({ id: "item-1" })]);
     await openJiziTab();
 
     const deleteBtn = screen.getByRole("button", { name: "刪除" });
@@ -290,7 +290,7 @@ describe("SavedJiziCard", () => {
   });
 
   it("Download: anchor click fires with filename jizi-${text}-${id6}.png", async () => {
-    mockUseSavedJizi.mockReturnValueOnce([
+    mockUseSavedJizi.mockReturnValue([
       makeJiziItem({ id: "abcdef0123", text: "永" }),
     ]);
     await openJiziTab();
@@ -318,7 +318,7 @@ describe("SavedJiziCard", () => {
   });
 
   it("Download: button is not rendered when item.thumbnail is missing", async () => {
-    mockUseSavedJizi.mockReturnValueOnce([makeJiziItem({ thumbnail: undefined })]);
+    mockUseSavedJizi.mockReturnValue([makeJiziItem({ thumbnail: undefined })]);
     await openJiziTab();
     expect(screen.queryByRole("button", { name: "下載作品" })).not.toBeInTheDocument();
   });
