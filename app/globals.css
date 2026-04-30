@@ -185,6 +185,12 @@ body {
   line-height: 1.5;
 }
 
+.donate-pill-note {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
 .donate-pill-action {
   align-self: flex-start;
   margin-top: 0.2rem;

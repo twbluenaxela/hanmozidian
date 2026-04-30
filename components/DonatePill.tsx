@@ -109,6 +109,7 @@ export default function DonatePill() {
             <p className="donate-pill-label">Taiwan</p>
             <p className="donate-pill-title">Direct bank transfer</p>
             <p className="donate-pill-copy">{BANK_INFO}</p>
+            <p className="donate-pill-note">匯款時請在備注註明這是贊助。</p>
             <button type="button" className="donate-pill-action" onClick={handleCopy}>
               {copied ? "已複製" : "複製匯款資訊"}
             </button>
