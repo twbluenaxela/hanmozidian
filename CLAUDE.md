@@ -140,7 +140,9 @@ const imageUrl = resolveImageUrl(image.imagePath);
 
 ## 部署注意事項
 
-- **Fly.io** + Docker
+- **Fly.io app**: `hanmozidian` — live at https://hanmozidian.fly.dev
+- **GitHub repo**: `git@github.com:twbluenaxela/hanmozidian.git`
+- **DB 檔案**: `data/shufazidian.db`（本機檔案尚未更名，程式碼路徑與此一致）
 - DB 在生產環境是**唯讀**的 — 所有寫入必須在本機完成後部署
 - **永遠用 `./deploy.sh` 部署，不要直接用 `fly deploy`**
   - `deploy.sh` 會先執行 WAL checkpoint，再呼叫 `fly deploy`

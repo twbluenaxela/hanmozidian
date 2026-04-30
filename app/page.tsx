@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import DonatePill from "@/components/DonatePill";
 
 
 export const dynamic = "force-dynamic";
@@ -165,6 +166,7 @@ export default function HomePage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-full px-6 pb-20"
       style={{ paddingTop: "18vh" }}>
+      <DonatePill />
 
       {/* ── HERO ── */}
       <div className="fade-up-1 flex flex-col items-center w-full max-w-sm">
