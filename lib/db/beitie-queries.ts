@@ -59,14 +59,20 @@ function ensureD1Configured() {
   }
 }
 
+function normalizeStyleSlug(styleSlug: string | null | undefined): string | null {
+  if (!styleSlug) return null;
+  return styleSlug === "jin" ? "jinwen" : styleSlug;
+}
+
 function parseRow(row: Record<string, unknown>): BeitieRow {
+  const normalizedStyleSlug = normalizeStyleSlug((row.style_slug as string) ?? null) ?? "";
   return {
     id: row.id as number,
     title: row.title as string,
     author: row.author as string,
     dynasty: row.dynasty as string,
     style: row.style as string,
-    styleSlug: row.style_slug as string,
+    styleSlug: normalizedStyleSlug,
     yearLabel: (row.year_label as string) ?? null,
     medium: (row.medium as string) ?? null,
     charCount: (row.char_count as number) ?? null,
@@ -89,8 +95,11 @@ function parseRow(row: Record<string, unknown>): BeitieRow {
 
 export async function listBeitie(styleSlug?: string): Promise<BeitieRow[]> {
   ensureD1Configured();
-  const rows = styleSlug
-    ? await d1Query("SELECT * FROM beitie WHERE style_slug = ? ORDER BY id", [styleSlug])
+  const normalizedStyleSlug = normalizeStyleSlug(styleSlug);
+  const rows = normalizedStyleSlug
+    ? normalizedStyleSlug === "jinwen"
+      ? await d1Query("SELECT * FROM beitie WHERE style_slug IN (?, ?) ORDER BY id", ["jinwen", "jin"])
+      : await d1Query("SELECT * FROM beitie WHERE style_slug = ? ORDER BY id", [normalizedStyleSlug])
     : await d1Query("SELECT * FROM beitie ORDER BY id");
   return rows.map(parseRow);
 }
@@ -119,6 +128,7 @@ export async function insertBeitie(data: {
   sourceUrl?: string | null;
 }): Promise<number> {
   ensureD1Configured();
+  const normalizedStyleSlug = normalizeStyleSlug(data.styleSlug);
   const rows = await d1Query(
     `INSERT INTO beitie
       (title, author, dynasty, style, style_slug, year_label, medium,
@@ -131,7 +141,7 @@ export async function insertBeitie(data: {
       data.author,
       data.dynasty,
       data.style,
-      data.styleSlug,
+      normalizedStyleSlug,
       data.yearLabel ?? null,
       data.medium ?? null,
       data.charCount ?? null,
@@ -150,6 +160,10 @@ export async function insertBeitie(data: {
 }
 
 export async function updateBeitie(id: number, fields: BeitieUpdateFields): Promise<void> {
+  const normalizedFields = {
+    ...fields,
+    ...(fields.styleSlug !== undefined ? { styleSlug: normalizeStyleSlug(fields.styleSlug) } : {}),
+  };
   const colMap: Record<string, string> = {
     title: "title",
     author: "author",
@@ -177,9 +191,9 @@ export async function updateBeitie(id: number, fields: BeitieUpdateFields): Prom
   const values: unknown[] = [];
 
   for (const [key, col] of Object.entries(colMap)) {
-    if (key in fields) {
+    if (key in normalizedFields) {
       setClauses.push(`${col} = ?`);
-      const val = (fields as Record<string, unknown>)[key];
+      const val = (normalizedFields as Record<string, unknown>)[key];
       values.push(val);
     }
   }

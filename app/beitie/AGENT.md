@@ -228,7 +228,7 @@ All beitie pages are `"use client"` components — they fetch data client-side v
 
 4. **`upload-d1` is an upsert, not a push** — `POST /api/admin/beitie/[id]/upload-d1` does `INSERT ... ON CONFLICT DO UPDATE`. Since PATCH also writes to D1, this is now redundant but harmless. It also appends an `"uploaded"` tag.
 
-5. **Style slugs are fixed** — The allowed slugs are `kai`, `xing`, `cao`, `li`, `zhuan`. There is no 金文 (bronze inscription) style in the beitie system — that exists only in the calligraphy dictionary.
+5. **Style slugs are fixed** — The allowed slugs are `jinwen`, `kai`, `xing`, `cao`, `li`, `zhuan`. Older data may still use `jin`; normalize that to `jinwen` when editing or filtering.
 
 6. **Gemini JSON parsing** — Gemini sometimes wraps its JSON output in markdown code fences (` ```json ... ``` `). The route strips these before parsing. If you add a new model, test that it also returns bare JSON or is handled by the strip logic.
 

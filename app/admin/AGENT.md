@@ -82,7 +82,7 @@ Key points:
 - `imagePages[]` is populated by `fetch_pages.py` — scrapes the NPM detail page HTML. The NPM open-data API only returns `imageUrl_m` for the first image; all pages require HTML scraping.
 - `annotationDraft` is a **JSON string** (double-encoded) stored inside the JSON. Parse it with `JSON.parse(entry.annotationDraft)`.
 - `status` lifecycle: `pending` → `processing` (after process.py runs) → `annotating` (while editing) → `done` / `skipped`
-- `styleSlug` maps to the canonical style keys used by the main DB: `kai`, `xing`, `cao`, `li`, `zhuan`, `jin`
+- `styleSlug` maps to the canonical style keys used by the main DB: `jinwen`, `kai`, `xing`, `cao`, `li`, `zhuan`
 
 ---
 

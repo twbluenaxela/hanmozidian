@@ -4,12 +4,18 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
 const STYLE_OPTIONS = [
+  { slug: "jinwen", label: "金文" },
   { slug: "kai",   label: "楷書" },
   { slug: "xing",  label: "行書" },
   { slug: "cao",   label: "草書" },
   { slug: "li",    label: "隸書" },
   { slug: "zhuan", label: "篆書" },
 ];
+
+function normalizeStyleSlug(styleSlug: string | null | undefined): string {
+  if (!styleSlug) return "";
+  return styleSlug === "jin" ? "jinwen" : styleSlug;
+}
 
 interface FormState {
   title: string;
@@ -110,7 +116,7 @@ export default function EditBeiitiePage() {
           author: it.author ?? "",
           dynasty: it.dynasty ?? "",
           style: it.style ?? "",
-          styleSlug: it.styleSlug ?? "",
+          styleSlug: normalizeStyleSlug(it.styleSlug),
           yearLabel: it.yearLabel ?? "",
           medium: it.medium ?? "",
           charCount: it.charCount != null ? String(it.charCount) : "",

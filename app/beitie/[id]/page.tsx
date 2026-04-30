@@ -30,6 +30,7 @@ interface BeitieDetail {
 }
 
 const STYLE_COLORS: Record<string, { bg: string; text: string }> = {
+  jinwen: { bg: "rgba(224,190,120,0.12)",  text: "#e0be78" },
   kai:   { bg: "rgba(212,168,83,0.12)",   text: "#d4a853" },
   xing:  { bg: "rgba(100,180,255,0.12)",  text: "#64b4ff" },
   cao:   { bg: "rgba(180,130,255,0.12)",  text: "#b482ff" },

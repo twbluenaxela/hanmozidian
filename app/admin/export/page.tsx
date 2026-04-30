@@ -30,7 +30,7 @@ interface WorkState {
 }
 
 const STYLE_LABELS: Record<string, string> = {
-  kai: "楷", xing: "行", cao: "草", li: "隸", zhuan: "篆", jin: "金",
+  jinwen: "金", jin: "金", kai: "楷", xing: "行", cao: "草", li: "隸", zhuan: "篆",
 };
 
 function defaultState(): WorkState {

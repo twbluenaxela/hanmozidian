@@ -17,11 +17,12 @@ interface BeitieItem {
 }
 
 const STYLE_COLORS: Record<string, string> = {
-  kai:   "#d4a853",
-  xing:  "#64b4ff",
-  cao:   "#b482ff",
-  li:    "#64dca0",
-  zhuan: "#ff8c64",
+  jinwen: "#e0be78",
+  kai:    "#d4a853",
+  xing:   "#64b4ff",
+  cao:    "#b482ff",
+  li:     "#64dca0",
+  zhuan:  "#ff8c64",
 };
 
 export default function BeistieAdminPage() {

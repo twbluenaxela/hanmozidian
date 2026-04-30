@@ -518,6 +518,17 @@ def scrape_chars(
                     work_trad = _s2t_convert(parsed["work"])
                     dynasty = parsed["dynasty"]
 
+                    # zi.tools bronze-script rows often arrive without an author
+                    # and occasionally inherit 石鼓文 as a generic source title.
+                    # Keep those images grouped under a dedicated 金文 work so
+                    # the app doesn't present them as 篆書/石鼓文 in filters.
+                    if (
+                        slug == "jinwen"
+                        and author_trad == "Unknown"
+                        and work_trad in {"Unknown", "石鼓文"}
+                    ):
+                        work_trad = "金文（zi.tools）"
+
                     if author_trad == "Unknown" and work_trad == "Unknown":
                         continue
 

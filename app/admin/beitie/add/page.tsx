@@ -4,12 +4,18 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const STYLE_OPTIONS = [
+  { slug: "jinwen", label: "金文" },
   { slug: "kai",   label: "楷書" },
   { slug: "xing",  label: "行書" },
   { slug: "cao",   label: "草書" },
   { slug: "li",    label: "隸書" },
   { slug: "zhuan", label: "篆書" },
 ];
+
+function normalizeStyleSlug(styleSlug: string | null | undefined): string {
+  if (!styleSlug) return "";
+  return styleSlug === "jin" ? "jinwen" : styleSlug;
+}
 
 interface NpmResult {
   identifier: string;
@@ -97,14 +103,15 @@ export default function AddBeiitiePage() {
   async function selectNpmWork(work: NpmResult) {
     setCoverIdx(0);
     setSelectedNpm(work);
-    const styleLabel = STYLE_OPTIONS.find((s) => s.slug === work.styleSlug)?.label ?? work.styleSlug;
+    const normalizedStyleSlug = normalizeStyleSlug(work.styleSlug);
+    const styleLabel = STYLE_OPTIONS.find((s) => s.slug === normalizedStyleSlug)?.label ?? normalizedStyleSlug;
     const initialPages = work.imagePages.length > 0 ? work.imagePages : [];
     setForm({
       title: work.name,
       author: work.calligrapher,
       dynasty: work.era,
       style: styleLabel,
-      styleSlug: work.styleSlug,
+      styleSlug: normalizedStyleSlug,
       yearLabel: "",
       medium: "",
       charCount: "",

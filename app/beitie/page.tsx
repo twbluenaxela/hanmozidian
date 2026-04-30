@@ -17,6 +17,7 @@ interface BeitieItem {
 }
 
 const STYLE_COLORS: Record<string, { bg: string; text: string }> = {
+  jinwen:{ bg: "rgba(224,190,120,0.12)",  text: "#e0be78" },
   kai:   { bg: "rgba(212,168,83,0.12)",   text: "#d4a853" },
   xing:  { bg: "rgba(100,180,255,0.12)",  text: "#64b4ff" },
   cao:   { bg: "rgba(180,130,255,0.12)",  text: "#b482ff" },
@@ -26,6 +27,7 @@ const STYLE_COLORS: Record<string, { bg: string; text: string }> = {
 
 const STYLE_FILTERS = [
   { key: "all",   label: "全部" },
+  { key: "jinwen", label: "金文" },
   { key: "kai",   label: "楷書" },
   { key: "xing",  label: "行書" },
   { key: "li",    label: "隸書" },

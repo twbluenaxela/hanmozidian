@@ -38,14 +38,19 @@ interface BoxesData {
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
 const STYLE_SLUGS = [
+  { slug: "jinwen", label: "金" },
   { slug: "kai",   label: "楷" },
   { slug: "xing",  label: "行" },
   { slug: "cao",   label: "草" },
   { slug: "li",    label: "隸" },
   { slug: "zhuan", label: "篆" },
-  { slug: "jin",   label: "金" },
   { slug: "unknown", label: "未知" },
 ];
+
+function normalizeStyleSlug(styleSlug: string | null | undefined): string {
+  if (!styleSlug) return "";
+  return styleSlug === "jin" ? "jinwen" : styleSlug;
+}
 
 let _idSeq = 0;
 function makeId() {
@@ -148,7 +153,7 @@ function AnnotateInner() {
       .then(({ work, boxes: boxData, pageCount: pc }: { work: WorkData; boxes: BoxesData | null; pageCount: number }) => {
         setWork(work);
         setCalligrapherInput(work.calligrapher || "");
-        setStyleInput(work.styleSlug || "");
+        setStyleInput(normalizeStyleSlug(work.styleSlug));
         setDisplayNameInput(work.displayName || "");
         setSourceBlurbInput(work.sourceBlurb || "");
         setPageCount(pc ?? 1);
