@@ -34,6 +34,8 @@
 | 首頁 | `app/page.tsx` |
 | 首頁架構文件 | `app/AGENT.md` |
 | 字典詳情頁 | `app/character/[char]/page.tsx` |
+| 字典詳情頁 + ZitieModal 架構文件 | `app/character/AGENT.md` |
+| 字帖生成器 | `components/ZitieModal.tsx` |
 | 集字工坊（最複雜頁面） | `app/jizi/page.tsx` |
 | 碑帖瀏覽 | `app/browse/page.tsx` |
 | 碑帖藏品清單 | `app/beitie/page.tsx` |
