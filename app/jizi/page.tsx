@@ -6,6 +6,7 @@ import CalligraphyCharacter from "@/components/CalligraphyCharacter";
 import { resolveCurrentImage } from "@/lib/utils";
 import { useImageRetry } from "@/lib/useImageRetry";
 import { toPng } from "html-to-image";
+import { jsPDF } from "jspdf";
 import { useAuth } from "@/lib/auth-context";
 import { saveJizi, JIZI_LOAD_KEY } from "@/lib/savedJizi";
 
@@ -109,6 +110,7 @@ export default function JiziPage() {
   const [loading, setLoading] = useState(false);
   const [paper, setPaper] = useState(PAPERS[0]);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -256,6 +258,40 @@ export default function JiziPage() {
     } finally {
       setActiveIndices(prevSelection);
       setIsExporting(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!canvasRef.current) return;
+    setIsExportingPdf(true);
+    const prevSelection = [...activeIndices];
+    setActiveIndices([]);
+    setSheetOpen(false);
+    setPickerOpen(false);
+    try {
+      await new Promise((r) => setTimeout(r, 300));
+      const dataUrl = await toPng(canvasRef.current, {
+        pixelRatio: 3,
+        backgroundColor: paper.color === "transparent" ? undefined : paper.color,
+        width: canvasRef.current.scrollWidth,
+        height: canvasRef.current.scrollHeight,
+        style: { transform: "none" },
+      });
+      const img = new Image();
+      img.src = dataUrl;
+      await new Promise((res) => { img.onload = res; });
+      const pxW = img.naturalWidth;
+      const pxH = img.naturalHeight;
+      const orient = pxW > pxH ? "landscape" : "portrait";
+      const pdf = new jsPDF({ orientation: orient, unit: "px", format: [pxW, pxH] });
+      pdf.addImage(dataUrl, "PNG", 0, 0, pxW, pxH);
+      pdf.save(`hanmo-${Date.now()}.pdf`);
+    } catch (err) {
+      alert("PDF 匯出失敗，請確保圖片伺服器允許跨域訪問。");
+      console.error(err);
+    } finally {
+      setActiveIndices(prevSelection);
+      setIsExportingPdf(false);
     }
   };
 
@@ -490,7 +526,10 @@ export default function JiziPage() {
                 <span className="absolute -bottom-5 right-0 text-[10px] whitespace-nowrap text-green-500">{shareMessage}</span>
               )}
             </div>
-            <button onClick={handleExport} disabled={isExporting || isSharing} className="bg-[var(--accent)] text-[var(--background)] px-4 py-1.5 rounded-xl font-bold text-sm shadow-md hover:scale-105 transition-all disabled:opacity-60">
+            <button onClick={handleExportPdf} disabled={isExportingPdf || isExporting || isSharing} className="border border-[var(--accent)] text-[var(--accent)] px-3 py-1.5 rounded-xl font-bold text-sm hover:scale-105 transition-all disabled:opacity-40">
+              {isExportingPdf ? "匯出中..." : "PDF"}
+            </button>
+            <button onClick={handleExport} disabled={isExporting || isExportingPdf || isSharing} className="bg-[var(--accent)] text-[var(--background)] px-4 py-1.5 rounded-xl font-bold text-sm shadow-md hover:scale-105 transition-all disabled:opacity-60">
               {isExporting ? "匯出中..." : "匯出作品"}
             </button>
           </div>

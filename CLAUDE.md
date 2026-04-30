@@ -14,6 +14,7 @@
 - **Drizzle ORM 0.45.2** + **better-sqlite3 12.8.0** (同步 SQLite)
 - **Firebase Auth** (Google + Email/Password)
 - **Cloudflare R2** (S3-compatible) for production images
+- **PWA** — installable via `app/manifest.ts`; network-only (no service worker)
 
 ## 設計系統 & 文件
 
@@ -45,6 +46,8 @@
 | 管理後台（隊列） | `app/admin/page.tsx` |
 | 管理後台（標注畫布） | `app/admin/annotate/page.tsx` |
 | 管理後台架構文件 | `app/admin/AGENT.md` |
+| PWA manifest | `app/manifest.ts` |
+| PWA icons | `public/icon-192.png`, `public/icon-512.png` |
 | 搜尋 API | `app/api/search/route.ts` |
 | 集字 API | `app/api/jizi/route.ts` |
 | 字元圖片 API | `app/api/character/[char]/images/route.ts` |
