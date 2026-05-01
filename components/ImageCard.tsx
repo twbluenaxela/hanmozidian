@@ -43,7 +43,7 @@ export default function ImageCard({
         {calligrapherName || ""}
       </span>
       {workName && (
-        <span className="font-display text-[10px] text-[var(--muted)]/60 group-hover:text-[var(--accent)]/70 truncate w-full text-center transition-colors">
+        <span className="font-display text-[10px] text-[var(--muted)]/80 group-hover:text-[var(--accent)]/85 truncate w-full text-center transition-colors">
           {workName}
         </span>
       )}
