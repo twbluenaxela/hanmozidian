@@ -40,8 +40,13 @@ export default function ImageCard({
         )}
       </div>
       <span className="font-display text-xs text-[var(--muted)] group-hover:text-[var(--accent)] truncate w-full text-center transition-colors">
-        {calligrapherName || workName || ""}
+        {calligrapherName || ""}
       </span>
+      {workName && (
+        <span className="font-display text-[10px] text-[var(--muted)]/60 group-hover:text-[var(--accent)]/70 truncate w-full text-center transition-colors">
+          {workName}
+        </span>
+      )}
     </div>
   );
 }
