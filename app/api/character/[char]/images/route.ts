@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCharacterByChar, getImages, getStyleCounts } from "@/lib/db/queries";
 import { resolveImageUrl, parseIdList } from "@/lib/utils";
+import { simplifiedToTraditional } from "@/lib/s2t";
 
 export async function GET(
   request: NextRequest,
@@ -16,7 +17,7 @@ export async function GET(
   const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
   const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") || "50") || 50), 200);
 
-  const charRow = getCharacterByChar(decodeURIComponent(char));
+  const charRow = getCharacterByChar(simplifiedToTraditional(decodeURIComponent(char)));
   if (!charRow) {
     return NextResponse.json({ error: "Character not found" }, { status: 404 });
   }
