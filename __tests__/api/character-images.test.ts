@@ -107,4 +107,26 @@ describe("GET /api/character/[char]/images", () => {
       expect.objectContaining({ calligrapherIds: [5] })
     );
   });
+
+  it("converts simplified Chinese input to traditional before DB lookup", async () => {
+    // 专 (simplified) → 專 (traditional); the DB lookup must receive 專
+    mockGetCharacterByChar.mockReturnValue({ id: 99, character: "專" });
+    mockGetStyleCounts.mockReturnValue([{ slug: "kai", nameZh: "楷書", count: 2 }]);
+    mockGetImages.mockReturnValue([]);
+
+    const res = await GET(makeRequest("专"), { params: makeParams("专") });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockGetCharacterByChar).toHaveBeenCalledWith("專");
+    expect(body.character).toBe("專");
+  });
+
+  it("returns 404 for simplified input when no traditional equivalent exists in DB", async () => {
+    mockGetCharacterByChar.mockReturnValue(null);
+
+    const res = await GET(makeRequest("专"), { params: makeParams("专") });
+
+    expect(res.status).toBe(404);
+  });
 });

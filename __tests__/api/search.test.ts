@@ -94,4 +94,31 @@ describe("GET /api/search", () => {
 
     expect(body.characters[0].totalImages).toBe(100);
   });
+
+  it("converts simplified Chinese input to traditional before lookup", async () => {
+    // 专 (simplified) → 專 (traditional)
+    mockGetCharacterByChar.mockReturnValue({ id: 99, character: "專", unicodeHex: "5C08" });
+    mockGetStyleCounts.mockReturnValue([{ slug: "kai", nameZh: "楷書", count: 3 }]);
+
+    const res = await GET(makeRequest("专"));
+    const body = await res.json();
+
+    expect(body.characters).toHaveLength(1);
+    expect(mockGetCharacterByChar).toHaveBeenCalledWith("專");
+  });
+
+  it("converts a simplified multi-character query to traditional", async () => {
+    // 专业 (simplified) → 專業 (traditional)
+    mockGetCharacterByChar
+      .mockReturnValueOnce({ id: 99, character: "專", unicodeHex: "5C08" })
+      .mockReturnValueOnce({ id: 100, character: "業", unicodeHex: "696D" });
+    mockGetStyleCounts.mockReturnValue([]);
+
+    const res = await GET(makeRequest("专业"));
+    const body = await res.json();
+
+    expect(mockGetCharacterByChar).toHaveBeenNthCalledWith(1, "專");
+    expect(mockGetCharacterByChar).toHaveBeenNthCalledWith(2, "業");
+    expect(body.characters).toHaveLength(2);
+  });
 });

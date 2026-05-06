@@ -65,6 +65,11 @@ export default function CharacterPage({
           setLoading(false);
           return;
         }
+        // Redirect to canonical traditional-character URL if a simplified char was used
+        if (data.character && data.character !== char) {
+          router.replace(`/character/${encodeURIComponent(data.character)}`);
+          return;
+        }
         setStyleCounts(data.styleCounts || []);
         const firstStyle = (data.styleCounts || [])[0];
         if (firstStyle) {
