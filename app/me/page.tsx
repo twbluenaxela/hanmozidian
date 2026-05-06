@@ -229,6 +229,12 @@ function AuthCard() {
             <GoogleIcon />
             以 Google 帳號登入
           </button>
+          {mode === "register" && (
+            <p className="text-[10px] text-[var(--muted-dim)] text-center leading-relaxed px-1 -mt-2">
+              首次登入即建立帳號，並同意我們的{" "}
+              <a href="/privacy" className="underline underline-offset-2 hover:text-[var(--muted)] transition-colors">隱私政策</a>。
+            </p>
+          )}
 
           <div className="flex items-center gap-3">
             <hr className="flex-1 border-[var(--border)]" />
@@ -282,13 +288,23 @@ function AuthCard() {
             )}
 
             {mode === "register" && (
-              <button
-                onClick={handleRegister}
-                disabled={isSubmitting}
-                className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                註冊
-              </button>
+              <>
+                <button
+                  onClick={handleRegister}
+                  disabled={isSubmitting}
+                  className="w-full py-2.5 rounded-lg bg-[var(--accent)] text-black text-sm font-bold hover:bg-[var(--accent-bright)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  註冊
+                </button>
+                <p className="text-[10px] text-[var(--muted-dim)] text-center leading-relaxed px-1">
+                  註冊即表示您同意翰墨字典依{" "}
+                  <a href="/privacy" className="underline underline-offset-2 hover:text-[var(--muted)] transition-colors">隱私政策</a>
+                  {" "}蒐集您的電子郵件，用於帳號識別。
+                  <br />
+                  By registering, you agree to our{" "}
+                  <a href="/privacy" className="underline underline-offset-2 hover:text-[var(--muted)] transition-colors">Privacy Policy</a>.
+                </p>
+              </>
             )}
 
             {mode === "reset" && (
