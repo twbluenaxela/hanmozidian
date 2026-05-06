@@ -270,6 +270,26 @@ export default function HomePage() {
             />
           ))}
         </div>
+
+      </div>
+
+      {/* ── Footer links, pinned above bottom nav ── */}
+      <div style={{
+        position: "fixed", bottom: 72, left: "50%", transform: "translateX(-50%)",
+        display: "flex", gap: 16, alignItems: "center",
+        fontSize: 10, fontFamily: "Arial", whiteSpace: "nowrap",
+      }}>
+        {(["Privacy Policy | 隱私政策", "Contact | 聯絡我們"] as const).map((label) => (
+          <a key={label} href={label === "Privacy Policy" ? "/privacy" : "/contact"} style={{
+            color: "#3a3a3a", textDecoration: "none", letterSpacing: "0.05em",
+            transition: "color 0.15s",
+          }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#737373")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#3a3a3a")}
+          >
+            {label}
+          </a>
+        ))}
       </div>
     </div>
   );

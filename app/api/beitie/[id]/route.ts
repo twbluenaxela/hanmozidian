@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getBeitieById, saveAiSummary } from "@/lib/db/beitie-queries";
-import Anthropic from "@anthropic-ai/sdk";
-
-const client = new Anthropic();
+import { buildBeItiePrompt } from "@/lib/beitie-ai";
 
 export async function GET(
   _req: NextRequest,
@@ -18,7 +17,6 @@ export async function GET(
   return NextResponse.json({ item });
 }
 
-// POST /api/beitie/[id] → trigger AI summary generation
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -30,35 +28,31 @@ export async function POST(
   const item = await getBeitieById(id);
   if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const SECTIONS = [
-    { key: "history",   prompt: "請用繁體中文詳細介紹此碑帖的歷史背景、創作緣由、流傳過程，約300字。" },
-    { key: "biography", prompt: "請用繁體中文介紹作者的生平、師承、藝術成就，約300字。" },
-    { key: "style",     prompt: "請用繁體中文分析此碑帖的書法風格、用筆特點、結體規律，約300字。" },
-    { key: "influence", prompt: "請用繁體中文介紹此碑帖對後世書法的影響與傳承，約300字。" },
-    { key: "stories",   prompt: "請用繁體中文講述與此碑帖或作者相關的有趣故事和歷史典故，約300字。" },
-    { key: "practice",  prompt: "請用繁體中文為書法學習者提供臨摹此碑帖的具體建議，包括用筆、結體、工具選擇等，約300字。" },
-  ] as const;
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 500 });
 
-  const context = `碑帖名稱：${item.title}，作者：${item.author}，朝代：${item.dynasty}，書體：${item.style}，年代：${item.yearLabel ?? "不詳"}。`;
-  const results: Record<string, string> = {};
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const gemini = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const result = await gemini.generateContent(buildBeItiePrompt(item));
+    const text = result.response.text().trim();
 
-  for (const section of SECTIONS) {
-    const msg = await client.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 600,
-      messages: [{ role: "user", content: `${context}\n\n${section.prompt}` }],
-    });
-    results[section.key] = (msg.content[0] as { text: string }).text.trim();
+    const jsonText = text.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+    const sections = JSON.parse(jsonText) as {
+      history: string;
+      biography: string;
+      style: string;
+      influence: string;
+      stories: string;
+      practice: string;
+    };
+
+    await saveAiSummary(id, sections);
+
+    return NextResponse.json({ ok: true, id });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[beitie/ai] Gemini error:", msg);
+    return NextResponse.json({ error: "Generation failed" }, { status: 500 });
   }
-
-  await saveAiSummary(id, {
-    history:   results.history,
-    biography: results.biography,
-    style:     results.style,
-    influence: results.influence,
-    stories:   results.stories,
-    practice:  results.practice,
-  });
-
-  return NextResponse.json({ ok: true, id });
 }
