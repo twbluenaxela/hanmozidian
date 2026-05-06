@@ -280,7 +280,7 @@ export default function HomePage() {
         fontSize: 10, fontFamily: "Arial", whiteSpace: "nowrap",
       }}>
         {(["Privacy Policy | 隱私政策", "Contact | 聯絡我們"] as const).map((label) => (
-          <a key={label} href={label === "Privacy Policy" ? "/privacy" : "/contact"} style={{
+          <a key={label} href={label.startsWith("Privacy Policy") ? "/privacy" : "/contact"} style={{
             color: "#3a3a3a", textDecoration: "none", letterSpacing: "0.05em",
             transition: "color 0.15s",
           }}
