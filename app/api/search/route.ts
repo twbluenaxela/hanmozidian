@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     }
     if (!charRow) continue;
 
-    const styleCounts = getStyleCounts(charRow.id);
+    const styleCounts = getStyleCounts([charRow.id]);
     results.push({
       character: charRow.character,
       unicodeHex: charRow.unicodeHex,

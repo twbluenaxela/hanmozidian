@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     knownIds.push(charRow.id);
 
     const images = getImages({
-      characterId: charRow.id,
+      characterIds: [charRow.id],
       styleSlug: style,
       calligrapherIds,
       workIds,

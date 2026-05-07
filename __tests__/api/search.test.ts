@@ -62,7 +62,7 @@ describe("GET /api/search", () => {
 
     await GET(makeRequest("山"));
 
-    expect(mockGetStyleCounts).toHaveBeenCalledWith(42);
+    expect(mockGetStyleCounts).toHaveBeenCalledWith([42]);
   });
 
   it("processes multiple characters in one request", async () => {
