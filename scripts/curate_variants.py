@@ -207,7 +207,7 @@ def main() -> None:
     parser.add_argument("--min-images", type=int, default=0,
                         help="[batch] Skip groups with fewer total images than this")
     parser.add_argument("--db", default="data/shufazidian.db")
-    parser.add_argument("--images-dir", default="public/images")
+    parser.add_argument("--images-dir", default="public")
     parser.add_argument("--style")
     parser.add_argument("--source")
     parser.add_argument("--dry-run", action="store_true")
