@@ -17,7 +17,12 @@ export async function GET(
   const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
   const limit = Math.min(Math.max(1, parseInt(searchParams.get("limit") || "50") || 50), 200);
 
-  const charRow = getCharacterByChar(simplifiedToTraditional(decodeURIComponent(char)));
+  const decoded = decodeURIComponent(char);
+  let charRow = getCharacterByChar(decoded);
+  if (!charRow) {
+    const converted = simplifiedToTraditional(decoded);
+    if (converted !== decoded) charRow = getCharacterByChar(converted);
+  }
   if (!charRow) {
     return NextResponse.json({ error: "Character not found" }, { status: 404 });
   }
