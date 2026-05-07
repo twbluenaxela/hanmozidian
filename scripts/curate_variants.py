@@ -178,12 +178,12 @@ def curate_group(
 
     for i, (img_id, img_path, source, style_name, style_slug) in enumerate(images, 1):
         full_path = images_root / img_path
-        print(f"  [{i}/{total_remaining}] {style_name} · {source}  {img_path}")
+        print(f"  [{i}/{total_remaining}] now={char}  {style_name} · {source}  {img_path}")
         open_image(full_path)
 
         while True:
             try:
-                answer = input(f"  [{shortcut}] / Enter / s / q: ").strip()
+                answer = input(f"  [{shortcut}] / Enter=keep / s / q: ").strip()
             except (EOFError, KeyboardInterrupt):
                 print("\n  Interrupted — progress saved.")
                 if not dry_run:
@@ -250,7 +250,7 @@ def main() -> None:
     parser.add_argument("--min-images", type=int, default=0,
                         help="[batch] Skip groups with fewer total images than this")
     parser.add_argument("--db", default="data/shufazidian.db")
-    parser.add_argument("--images-dir", default="public/images")
+    parser.add_argument("--images-dir", default="public")
     parser.add_argument("--style")
     parser.add_argument("--source")
     parser.add_argument("--dry-run", action="store_true")
@@ -296,7 +296,7 @@ def main() -> None:
     done_count = sum(1 for g in groups
                      if progress.get(g["simp"], {}).get("status") == "done")
     print(f"\nBatch curation: {total_groups} groups, {done_count} already done.")
-    print("Commands: character to reassign | Enter = keep | s = skip | d = mark done | q = save & quit\n")
+    print("Commands: character to reassign | Enter = keep | s = skip group | q = save & quit\n")
 
     for g in groups:
         simp = g["simp"]
@@ -318,7 +318,7 @@ def main() -> None:
 
         while True:
             try:
-                cmd = input("  Enter group? [y/s/d/q]: ").strip().lower()
+                cmd = input("  Enter group? [y/s/q]: ").strip().lower()
             except (EOFError, KeyboardInterrupt):
                 print("\nInterrupted.")
                 save_progress(progress)
@@ -330,11 +330,6 @@ def main() -> None:
                 conn.close()
                 sys.exit(0)
             if cmd == "s":
-                break
-            if cmd == "d":
-                progress[simp] = {"status": "done", "reviewed_ids": list(reviewed_ids)}
-                save_progress(progress)
-                print(f"  Marked {simp!r} as done.")
                 break
             if cmd in ("y", ""):
                 total_r = total_k = 0
@@ -351,9 +346,11 @@ def main() -> None:
                     conn.close()
                     return
                 print(f"\n  Group summary: {total_r} reassigned, {total_k} kept.")
-                cmd2 = input("  Mark group as done? [y/n]: ").strip().lower()
+                cur_status = progress.get(simp, {}).get("status", "not started")
+                cmd2 = input(f"  Mark group as done? (current: {cur_status}) [y/n, Enter=keep]: ").strip().lower()
                 if cmd2 == "y":
-                    progress[simp] = {"status": "done", "reviewed_ids": list(reviewed_ids)}
+                    cur_reviewed = set(progress.get(simp, {}).get("reviewed_ids", []))
+                    progress[simp] = {"status": "done", "reviewed_ids": list(cur_reviewed)}
                     save_progress(progress)
                 break
             print("  Invalid. Enter y/s/d/q.")
