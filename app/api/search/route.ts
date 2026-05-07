@@ -7,14 +7,18 @@ import { simplifiedToTraditional } from "@/lib/s2t";
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  const q = simplifiedToTraditional(request.nextUrl.searchParams.get("q") ?? "").trim() || null;
-  if (!q) {
+  const rawQ = (request.nextUrl.searchParams.get("q") ?? "").trim();
+  if (!rawQ) {
     return NextResponse.json({ characters: [] });
   }
 
   const results = [];
-  for (const char of [...q]) {
-    const charRow = getCharacterByChar(char);
+  for (const char of [...rawQ]) {
+    let charRow = getCharacterByChar(char);
+    if (!charRow) {
+      const converted = simplifiedToTraditional(char);
+      if (converted !== char) charRow = getCharacterByChar(converted);
+    }
     if (!charRow) continue;
 
     const styleCounts = getStyleCounts(charRow.id);

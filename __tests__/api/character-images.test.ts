@@ -109,8 +109,10 @@ describe("GET /api/character/[char]/images", () => {
   });
 
   it("converts simplified Chinese input to traditional before DB lookup", async () => {
-    // 专 (simplified) → 專 (traditional); the DB lookup must receive 專
-    mockGetCharacterByChar.mockReturnValue({ id: 99, character: "專" });
+    // 专 (simplified) → 專 (traditional); exact lookup returns null, s2t fallback finds 專
+    mockGetCharacterByChar
+      .mockReturnValueOnce(null) // exact lookup for 专 fails
+      .mockReturnValueOnce({ id: 99, character: "專" }); // s2t fallback finds 專
     mockGetStyleCounts.mockReturnValue([{ slug: "kai", nameZh: "楷書", count: 2 }]);
     mockGetImages.mockReturnValue([]);
 
@@ -128,5 +130,21 @@ describe("GET /api/character/[char]/images", () => {
     const res = await GET(makeRequest("专"), { params: makeParams("专") });
 
     expect(res.status).toBe(404);
+  });
+
+  it("looks up a traditional-variant character exactly without converting it", async () => {
+    // 裏 (U+88CF) is a traditional variant of 裡 (U+88E1); the app must NOT silently
+    // convert 裏 to 裡 when 裏 exists in the DB
+    mockGetCharacterByChar.mockReturnValueOnce({ id: 5, character: "裏" });
+    mockGetStyleCounts.mockReturnValue([{ slug: "kai", nameZh: "楷書", count: 3 }]);
+    mockGetImages.mockReturnValue([]);
+
+    const res = await GET(makeRequest("裏"), { params: makeParams("裏") });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(mockGetCharacterByChar).toHaveBeenCalledTimes(1);
+    expect(mockGetCharacterByChar).toHaveBeenCalledWith("裏");
+    expect(body.character).toBe("裏");
   });
 });
