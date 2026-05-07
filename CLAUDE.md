@@ -55,6 +55,8 @@
 | 字元圖片 API | `app/api/character/[char]/images/route.ts` |
 | 爬蟲腳本 | `scripts/scrape_zi_tools.py` |
 | 資料匯入 | `scripts/ingest_zhuojg.py` |
+| 字元變體群組 | `data/variant_groups.json` |
+| 變體整理工具 | `scripts/curate_variants.py` |
 | R2 上傳 | `scripts/upload_to_r2.py` |
 | 種子資料 | `scripts/seed_reference.ts` |
 | 部署腳本（含 WAL checkpoint） | `deploy.sh` |
@@ -208,6 +210,7 @@ const imageUrl = resolveImageUrl(image.imagePath);
 3. **WAL 模式** — 本機開發時 SQLite 使用 WAL；`*.db-wal` 被 `.dockerignore` 排除，所以部署時一定要透過 `./deploy.sh`（會自動 checkpoint），否則 WAL 裡的新資料不會進入生產環境
 4. **zi.tools 有速率限制** — 爬蟲內建延遲，不要移除它
 5. **圖片正規化** — 所有圖片統一為 256px WebP
+6. **ingest 腳本不做字元 s2t 轉換** — `scrape_zi_tools.py` 和 `ingest_zhuojg.py` 直接用來源字元作為 DB key，不轉換。這樣才能正確區分 裏/裡/里、鬆/松 等變體。搜尋層（`lib/s2t.ts`）仍保留 s2t fallback 供使用者輸入簡體字。
 
 ---
 

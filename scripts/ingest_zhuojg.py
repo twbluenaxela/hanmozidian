@@ -419,15 +419,13 @@ def main() -> int:
         )
         for img_path in pbar:
             try:
-                simp_char = char_from_path(img_path, folder, layout)
-                if simp_char is None:
+                src_char = char_from_path(img_path, folder, layout)
+                if src_char is None:
                     continue
-                trad_char = _s2t_convert(simp_char)
-                if len(trad_char) != 1 or not _is_cjk(trad_char):
-                    # opencc occasionally expands to multi-char; take first CJK
-                    trad_char = next((c for c in trad_char if _is_cjk(c)), simp_char)
-                
-                hex_code = char_to_unicode_hex(trad_char)
+                if not (len(src_char) == 1 and _is_cjk(src_char)):
+                    continue
+
+                hex_code = char_to_unicode_hex(src_char)
 
                 # Deterministic output filename: hash of source path (relative
                 # to cal_root). Stable across re-runs, avoids collisions.
@@ -440,7 +438,7 @@ def main() -> int:
                     total_skipped_dup += 1
                     continue
                 
-                chars_seen.add(trad_char)
+                chars_seen.add(src_char)
 
                 if args.dry_run:
                     inserted += 1
@@ -450,7 +448,7 @@ def main() -> int:
                 out_path = output_dir / style_slug / hex_code / f"{stem_hash}.webp"
                 process_image(img_path, out_path)
 
-                char_id = get_or_create_character(cursor, trad_char)
+                char_id = get_or_create_character(cursor, src_char)
                 
                 cursor.execute(
                     """INSERT INTO calligraphy_images
