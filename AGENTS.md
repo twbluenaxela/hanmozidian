@@ -108,6 +108,21 @@ npm run test:watch  # 監看模式
 3. 執行 `upload_to_r2.py` 上傳到 R2（生產環境）
 4. 部署前執行 `sqlite3 data/shufazidian.db "PRAGMA wal_checkpoint(TRUNCATE);"`
 
+### 字元 key 的重要規則（Unicode 正確性）
+- 兩個 ingest 腳本都**直接使用來源字元**作為 DB key，**不做 s2t 轉換**。
+- 原因：s2t 轉換會把多個正體變體（裏/裡/里、鬆/松、禦/御 等）合併到同一個 key，導致不同字的圖片混雜在一起。
+- 如果要抓取某個特定字（如 裏 U+88CF），請直接傳入該字，**不要依賴轉換**：
+  ```bash
+  python scripts/scrape_zi_tools.py --chars "裏裡里"  # 分別抓取三個字
+  ```
+- `lib/s2t.ts` 的搜尋層仍保留 s2t fallback（先精確比對，找不到才轉換），支援使用者輸入簡體字。
+
+### 字元變體管理
+- `data/variant_groups.json` — 177 個簡/繁變體群組，按圖片總數排序。
+- `scripts/curate_variants.py` — 互動式整理工具，可將圖片重新指派到正確字元。
+- `data/variant_groups_progress.json` — 整理進度（由腳本自動維護）。
+- 整理完畢後執行 `./deploy.sh`。
+
 ### 新增書家/作品
 1. 編輯 `scripts/seed_reference.ts`
 2. 執行 `npx tsx scripts/seed_reference.ts`

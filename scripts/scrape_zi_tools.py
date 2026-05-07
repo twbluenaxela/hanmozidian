@@ -469,15 +469,15 @@ def scrape_chars(
 
     try:
         for char in tqdm(chars, desc="characters", unit="char"):
-            trad_char = _s2t_convert(char)
-            if len(trad_char) != 1 or not _is_cjk(trad_char):
-                trad_char = next((c for c in trad_char if _is_cjk(c)), char)
+            if not (len(char) == 1 and _is_cjk(char)):
+                print(f"  skipping non-CJK input: {char!r}", file=sys.stderr)
+                continue
 
-            cursor.execute("SELECT 1 FROM zi_tools_scrapes WHERE character = ?", (trad_char,))
+            cursor.execute("SELECT 1 FROM zi_tools_scrapes WHERE character = ?", (char,))
             if cursor.fetchone():
                 continue
 
-            data = fetch_character(session, trad_char)
+            data = fetch_character(session, char)
             time.sleep(delay)
             if not data:
                 continue
@@ -505,13 +505,13 @@ def scrape_chars(
                     except Exception as e:
                         total_errors += 1
                         if errors_log is not None:
-                            errors_log.write(f"{trad_char}\t{slug}\tbase64:{e}\n")
+                            errors_log.write(f"{char}\t{slug}\tbase64:{e}\n")
                         continue
 
                     if len(raw_bytes) > MAX_IMAGE_BYTES:
                         total_errors += 1
                         if errors_log is not None:
-                            errors_log.write(f"{trad_char}\t{slug}\toversized:{len(raw_bytes)}\n")
+                            errors_log.write(f"{char}\t{slug}\toversized:{len(raw_bytes)}\n")
                         continue
 
                     author_trad = _s2t_convert(parsed["author"])
@@ -532,7 +532,7 @@ def scrape_chars(
                     if author_trad == "Unknown" and work_trad == "Unknown":
                         continue
 
-                    hex_code = char_to_unicode_hex(trad_char)
+                    hex_code = char_to_unicode_hex(char)
                     stem = hashlib.md5(parsed["b64"].encode("utf-8")).hexdigest()[:16]
                     rel_out = f"images/{slug}/{hex_code}/{stem}.webp"
 
@@ -550,7 +550,7 @@ def scrape_chars(
                         out_path = out_dir / slug / hex_code / f"{stem}.webp"
                         process_image_bytes(raw_bytes, out_path)
 
-                        char_id = get_or_create_character(cursor, trad_char)
+                        char_id = get_or_create_character(cursor, char)
                         cal_id = get_or_create_calligrapher(cursor, author_trad, dynasty)
                         work_id = get_or_create_work(cursor, work_trad, cal_id, style_id)
 
@@ -571,17 +571,17 @@ def scrape_chars(
                     except Exception as e:
                         total_errors += 1
                         if errors_log is not None:
-                            errors_log.write(f"{trad_char}\t{slug}\t{type(e).__name__}: {e}\n")
+                            errors_log.write(f"{char}\t{slug}\t{type(e).__name__}: {e}\n")
                             errors_log.flush()
                         else:
-                            print(f"  error on {trad_char}/{slug}: {e}", file=sys.stderr)
+                            print(f"  error on {char}/{slug}: {e}", file=sys.stderr)
                         continue
 
             if not dry_run:
                 cursor.execute(
                     "INSERT OR REPLACE INTO zi_tools_scrapes (character, scraped_at) "
                     "VALUES (?, datetime('now'))",
-                    (trad_char,),
+                    (char,),
                 )
                 conn.commit()
 
