@@ -32,7 +32,8 @@ export function getCharacterByChar(char: string) {
 }
 
 /** Returns per-style image counts for a character — used to populate the style tab bar. */
-export function getStyleCounts(characterId: number) {
+export function getStyleCounts(characterIds: number[]) {
+  if (characterIds.length === 0) return [];
   return db
     .select({
       styleId: calligraphyImages.styleId,
@@ -43,7 +44,7 @@ export function getStyleCounts(characterId: number) {
     })
     .from(calligraphyImages)
     .innerJoin(scriptStyles, eq(calligraphyImages.styleId, scriptStyles.id))
-    .where(eq(calligraphyImages.characterId, characterId))
+    .where(inArray(calligraphyImages.characterId, characterIds))
     .groupBy(calligraphyImages.styleId)
     .orderBy(scriptStyles.sortOrder)
     .all();
@@ -55,7 +56,7 @@ export function getStyleCounts(characterId: number) {
  * (used by the jizi canvas to vary default selections).
  */
 export function getImages(opts: {
-  characterId: number;
+  characterIds: number[];
   styleSlug?: string;
   calligrapherIds?: number[];
   workIds?: number[];
@@ -64,7 +65,7 @@ export function getImages(opts: {
   random?: boolean;
 }) {
   const {
-    characterId,
+    characterIds,
     styleSlug,
     calligrapherIds,
     workIds,
@@ -73,7 +74,9 @@ export function getImages(opts: {
     random = false,
   } = opts;
 
-  const conditions = [eq(calligraphyImages.characterId, characterId)];
+  if (characterIds.length === 0) return [];
+
+  const conditions = [inArray(calligraphyImages.characterId, characterIds)];
 
   if (styleSlug) {
     const style = db
@@ -100,6 +103,7 @@ export function getImages(opts: {
     .select({
       id: calligraphyImages.id,
       imagePath: calligraphyImages.imagePath,
+      character: characters.character,
       calligrapherName: calligraphers.nameZh,
       calligrapherId: calligraphyImages.calligrapherId,
       workName: works.nameZh,
@@ -109,6 +113,7 @@ export function getImages(opts: {
       source: calligraphyImages.source,
     })
     .from(calligraphyImages)
+    .innerJoin(characters, eq(calligraphyImages.characterId, characters.id))
     .leftJoin(calligraphers, eq(calligraphyImages.calligrapherId, calligraphers.id))
     .leftJoin(works, eq(calligraphyImages.workId, works.id))
     .innerJoin(scriptStyles, eq(calligraphyImages.styleId, scriptStyles.id))

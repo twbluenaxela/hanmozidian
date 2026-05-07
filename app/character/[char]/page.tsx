@@ -10,6 +10,7 @@ import JiziPicker from "@/components/JiziPicker";
 import ZitieModal from "@/components/ZitieModal";
 import { useAuth } from "@/lib/auth-context";
 import { useFavorites } from "@/lib/favorites";
+import { getVariantSiblings } from "@/lib/variants";
 
 interface StyleCount {
   slug: string;
@@ -52,11 +53,18 @@ export default function CharacterPage({
   const [loading, setLoading] = useState(true);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [zitieOpen, setZitieOpen] = useState(false);
+  const [fuzzy, setFuzzy] = useState(false);
 
-  // Fetch style counts on character change
+  const variantSiblings = getVariantSiblings(char);
+  const hasVariants = variantSiblings !== null;
+
+  // Fetch style counts on character or fuzzy change
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/character/${encodeURIComponent(char)}/images`)
+    const p = new URLSearchParams();
+    if (fuzzy) p.set("all_variants", "true");
+    const qs = p.toString() ? `?${p}` : "";
+    fetch(`/api/character/${encodeURIComponent(char)}/images${qs}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) {
@@ -81,13 +89,14 @@ export default function CharacterPage({
         }
       })
       .catch(() => setLoading(false));
-  }, [char]);
+  }, [char, fuzzy]);
 
   // Fetch images when style or filters change
   useEffect(() => {
     if (!activeStyle) return;
     setLoading(true);
     const params = new URLSearchParams({ style: activeStyle });
+    if (fuzzy) params.set("all_variants", "true");
     if (selectedCalligraphers.length > 0) {
       params.set("calligrapher", selectedCalligraphers.join(","));
     }
@@ -101,7 +110,7 @@ export default function CharacterPage({
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [char, activeStyle, selectedCalligraphers, selectedWorks]);
+  }, [char, activeStyle, selectedCalligraphers, selectedWorks, fuzzy]);
 
   const handleSearch = (query: string) => {
     const firstChar = [...query][0];
@@ -139,14 +148,31 @@ export default function CharacterPage({
           </div>
         </div>
 
-        {/* Style tabs */}
+        {/* Style tabs + variant toggle */}
         <div className="shrink-0">
-          <div className="max-w-2xl mx-auto">
-            <StyleTabs
-              styles={styleCounts}
-              activeStyle={activeStyle}
-              onStyleChange={handleStyleChange}
-            />
+          <div className="max-w-2xl mx-auto flex items-center">
+            <div className="flex-1 min-w-0">
+              <StyleTabs
+                styles={styleCounts}
+                activeStyle={activeStyle}
+                onStyleChange={handleStyleChange}
+              />
+            </div>
+            {hasVariants && (
+              <button
+                onClick={() => setFuzzy((v) => !v)}
+                title={fuzzy
+                  ? `僅顯示 ${char}`
+                  : `同時顯示 ${[char, ...(variantSiblings ?? [])].join("／")} 的字帖`}
+                className={`shrink-0 mr-3 px-2 py-1 text-xs rounded border transition-colors font-display ${
+                  fuzzy
+                    ? "bg-[var(--accent)] text-[var(--background)] border-[var(--accent)]"
+                    : "bg-transparent text-[var(--muted)] border-[var(--border)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                }`}
+              >
+                合體
+              </button>
+            )}
           </div>
         </div>
 
@@ -163,6 +189,7 @@ export default function CharacterPage({
                 onImageClick={(img) => setSelectedImage(img)}
                 character={char}
                 favoritedIds={favoritedIds}
+                showVariantBadge={fuzzy && hasVariants}
               />
             )}
           </div>
