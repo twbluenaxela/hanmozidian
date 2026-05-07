@@ -168,7 +168,8 @@ def curate_group(
 
     total_remaining = len(images)
     total_all = len(all_images)
-    shortcut = "/".join(variants)
+    numbered = {str(i + 1): v for i, v in enumerate(variants)}
+    shortcut = "/".join(f"{i+1}:{v}" for i, v in enumerate(variants))
     resume_note = f" (resuming — {skipped_count} already reviewed)" if skipped_count else ""
     print(f"\n{'[DRY RUN] ' if dry_run else ''}"
           f"  {total_remaining}/{total_all} images remaining{resume_note}")
@@ -189,6 +190,9 @@ def curate_group(
                 if not dry_run:
                     conn.commit()
                 return reassigned, kept
+
+            if answer in numbered:
+                answer = numbered[answer]
 
             if answer == "q":
                 if not dry_run:
