@@ -49,41 +49,47 @@ def save_index(index: dict):
 
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
-def strip_color_bar(img: np.ndarray) -> np.ndarray:
-    """Remove the NPM color calibration strip at the bottom of the image."""
-    h, w = img.shape[:2]
-    check_height = int(h * 0.15)
-    bottom_strip = img[h - check_height:, :]
-    hsv = cv2.cvtColor(bottom_strip, cv2.COLOR_BGR2HSV)
-    gray = cv2.cvtColor(bottom_strip, cv2.COLOR_BGR2GRAY)
-
-    # Detect via saturation (color patches) or tonal gradient across columns
+def _strip_is_colorful(region: np.ndarray) -> bool:
+    """Return True if the region contains NPM colour-calibration patches."""
+    hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
     high_sat = (hsv[:, :, 1] > 80).sum()
-    col_means = np.mean(gray, axis=0).astype(float)
-    col_std = float(np.std(col_means))
-
-    has_color_bar = (
-        high_sat > (check_height * w * 0.05)  # saturated patches
-        or col_std > 30                         # tonal gradient
+    col_std = float(np.std(np.mean(gray, axis=0).astype(float)))
+    return (
+        high_sat > (h * w * 0.05)
+        or col_std > 30
     )
-    if not has_color_bar:
-        return img
 
-    # Walk the entire check region and record the HIGHEST row that looks like
-    # a color bar. The old code stopped at the first (lowest) high-sat row,
-    # leaving upper bar rows in the image — those were then mis-detected as text.
-    cutline = h
-    for row in range(h - 1, h - check_height - 1, -1):
-        row_hsv = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2HSV)
-        row_gray = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2GRAY)[0].astype(float)
-        is_bar_row = (
-            (row_hsv[:, :, 1] > 80).sum() > w * 0.05
-            or float(row_gray.std()) > 30
-        )
-        if is_bar_row:
-            cutline = row  # keep updating — we want the topmost bar row
 
-    return img[:cutline, :]
+def strip_color_bar(img: np.ndarray) -> np.ndarray:
+    """Remove NPM colour calibration strips — bottom-mounted or right-mounted."""
+    h, w = img.shape[:2]
+
+    # ── Bottom strip ──────────────────────────────────────────────────────────
+    check_h = int(h * 0.15)
+    if _strip_is_colorful(img[h - check_h:, :]):
+        cutline = h
+        for row in range(h - 1, h - check_h - 1, -1):
+            row_hsv = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2HSV)
+            row_gray = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2GRAY)[0].astype(float)
+            if (row_hsv[:, :, 1] > 80).sum() > w * 0.05 or float(row_gray.std()) > 30:
+                cutline = row
+        img = img[:cutline, :]
+        h = img.shape[0]
+
+    # ── Right strip ───────────────────────────────────────────────────────────
+    check_w = int(w * 0.25)
+    if _strip_is_colorful(img[:, w - check_w:]):
+        cutcol = w
+        for col in range(w - 1, w - check_w - 1, -1):
+            col_hsv = cv2.cvtColor(img[:, col:col+1], cv2.COLOR_BGR2HSV)
+            col_gray = cv2.cvtColor(img[:, col:col+1], cv2.COLOR_BGR2GRAY)[:, 0].astype(float)
+            if (col_hsv[:, :, 1] > 80).sum() > h * 0.05 or float(col_gray.std()) > 30:
+                cutcol = col
+        img = img[:, :cutcol]
+
+    return img
 
 
 def isolate_text_region(img: np.ndarray) -> np.ndarray:
@@ -94,13 +100,9 @@ def isolate_text_region(img: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
 
-    # Scan vertical columns to find the main text region
-    # Title/colophon panels on NPM scrolls typically have a warmer/lighter background
-    # The main rubbing area is darker/greyer overall
     col_means = np.mean(gray, axis=0)
     text_cols = col_means < np.percentile(col_means, 75)
 
-    # Find the leftmost and rightmost columns that are part of the text block
     indices = np.where(text_cols)[0]
     if len(indices) < w * 0.3:
         return img  # fallback: return full image
@@ -199,72 +201,61 @@ def detect_columns(binary: np.ndarray) -> list[tuple[int, int]]:
 
 # ── Character detection within a column ──────────────────────────────────────
 
-def _split_at_minimum(proj: np.ndarray, y1: int, y2: int) -> int:
-    """Return the y index of the local minimum within [y1, y2]."""
-    window = proj[y1:y2]
-    return int(np.argmin(window)) + y1
-
-
-def _merge_close_boxes(
-    boxes: list[tuple[int, int, int, int]], merge_gap: int = 6
-) -> list[tuple[int, int, int, int]]:
-    """Merge consecutive boxes whose vertical gap is ≤ merge_gap pixels."""
-    if not boxes:
-        return boxes
-    merged = [boxes[0]]
-    for bx, by, bw, bh in boxes[1:]:
-        px, py, pw, ph = merged[-1]
-        if by - (py + ph) <= merge_gap:
-            merged[-1] = (px, py, max(pw, bw), by + bh - py)
-        else:
-            merged.append((bx, by, bw, bh))
-    return merged
-
-
-def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int) -> list[tuple[int, int, int, int]]:
+def _split_blob(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
     """
-    Use horizontal projection within a column to find character boundaries.
+    Split an oversized blob at the row with minimum ink — the gap between two characters.
+    Avoids the top/bottom 15% to prevent splitting at a stroke edge.
+    """
+    h, w = mask.shape
+    projection = (mask > 0).sum(axis=1).astype(float)
+    margin = max(8, h // 6)
+    search_region = projection[margin: h - margin]
+    if len(search_region) == 0:
+        return [(0, 0, w, h)]
+    split = int(np.argmin(search_region)) + margin
+    parts = []
+    if split > 10:
+        parts.append((0, 0, w, split))
+    if h - split > 10:
+        parts.append((0, split, w, h - split))
+    return parts if parts else [(0, 0, w, h)]
+
+
+def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int, close_kernel_h: int = 6) -> list[tuple[int, int, int, int]]:
+    """
+    Connected-components character detection within a column strip.
+    Uses morphological closing to bridge stroke gaps within a character,
+    then splits oversized blobs (touching chars) with watershed.
     Returns list of (x, y, w, h) bounding boxes, top-to-bottom.
     """
     col = binary[:, x1:x2]
     h, w = col.shape
-    projection = (col == 0).sum(axis=1).astype(float)
-    # Wider kernel smooths hairline gaps between strokes of the same character
-    kernel = np.ones(5) / 5
-    projection = np.convolve(projection, kernel, mode="same")
 
-    threshold = projection.mean() * 0.25
-    in_char = False
-    raw_boxes: list[tuple[int, int, int, int]] = []
-    start = 0
+    inv = cv2.bitwise_not(col)
+    # Narrow width avoids bleeding across column boundaries;
+    # tall height connects vertical stroke fragments within one character.
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, close_kernel_h))
+    closed = cv2.morphologyEx(inv, cv2.MORPH_CLOSE, kernel)
 
-    for y in range(h):
-        if not in_char and projection[y] > threshold:
-            in_char = True
-            start = y
-        elif in_char and projection[y] <= threshold:
-            in_char = False
-            char_h = y - start
-            if char_h > 15:
-                raw_boxes.append((x1, start, x2 - x1, char_h))
+    num_labels, label_map, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
 
-    if in_char and h - start > 15:
-        raw_boxes.append((x1, start, x2 - x1, h - start))
+    max_char_h = max(30, int(h * 0.35))
+    min_area = max(150, int((w * 0.1) ** 2))
 
-    # Split oversized boxes (seals, title text spanning multiple char heights)
-    # at the lowest-ink row within them
-    max_char_h = max(30, h // 3)
     boxes: list[tuple[int, int, int, int]] = []
-    for bx, by, bw, bh in raw_boxes:
+    for i in range(1, num_labels):
+        bx, by, bw, bh, area = stats[i]
+        if area < min_area:
+            continue
         if bh > max_char_h:
-            split = _split_at_minimum(projection, by, by + bh)
-            if split - by > 15:
-                boxes.append((bx, by, bw, split - by))
-            if by + bh - split > 15:
-                boxes.append((bx, split, bw, by + bh - split))
+            # Blob spans more than one character — split at the minimum-ink row
+            blob_mask = closed[by:by+bh, bx:bx+bw].astype(np.uint8)
+            for sx, sy, sw, sh in _split_blob(blob_mask):
+                boxes.append((int(x1 + bx + sx), int(by + sy), int(sw), int(sh)))
         else:
-            boxes.append((bx, by, bw, bh))
+            boxes.append((int(x1 + bx), int(by), int(bw), int(bh)))
 
+    boxes.sort(key=lambda b: b[1])
     return boxes
 
 
@@ -335,39 +326,30 @@ def process_work(identifier: str):
     print(f"Processing: {entry['name']}")
 
     # Step 1: Preprocess
-    print("  [1/4] Preprocessing...")
+    print("  [1/3] Preprocessing...")
     img_color, binary = preprocess(img_path)
     cv2.imwrite(str(out_dir / "clean.jpg"), img_color)
     cv2.imwrite(str(out_dir / "binary.jpg"), binary)
 
-    # Step 2: Projection-based detection
-    print("  [2/4] Detecting columns...")
+    # Step 2: Column + character detection
+    print("  [2/3] Detecting columns and characters...")
     columns = detect_columns(binary)
     print(f"        Found {len(columns)} columns")
 
-    projection_boxes = []
+    cv_boxes = []
     for x1, x2 in columns:
         chars = detect_chars_in_column(binary, x1, x2)
         for (x, y, w, h) in chars:
-            projection_boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": 0.6, "source": "projection"})
+            cv_boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": 0.7, "source": "opencv"})
 
-    # Filter out artifacts with extreme aspect ratios or tiny area
-    before = len(projection_boxes)
-    projection_boxes = [b for b in projection_boxes if _is_plausible_char_box(b)]
-    if len(projection_boxes) < before:
-        print(f"        Filtered {before - len(projection_boxes)} implausible boxes")
+    before = len(cv_boxes)
+    cv_boxes = [b for b in cv_boxes if _is_plausible_char_box(b)]
+    if len(cv_boxes) < before:
+        print(f"        Filtered {before - len(cv_boxes)} implausible boxes")
 
-    # Step 3: PaddleOCR detection
-    print("  [3/4] Running PaddleOCR detection...")
-    paddle_boxes = detect_with_paddle(img_color)
-    if paddle_boxes:
-        print(f"        PaddleOCR found {len(paddle_boxes)} regions")
-    else:
-        print("        PaddleOCR not available — using projection only")
-
-    # Step 4: Merge and align with 釋文
-    all_boxes = paddle_boxes if paddle_boxes else projection_boxes
-    # Sort top-to-bottom, right-to-left (standard calligraphy reading order)
+    # Step 3: Merge and align with 釋文
+    all_boxes = cv_boxes
+    # Sort right-to-left by column centre, then top-to-bottom within each column
     all_boxes.sort(key=lambda b: (-(b["x"] + b["w"] // 2), b["y"]))
 
     shiwen = entry.get("shiwen") or ""

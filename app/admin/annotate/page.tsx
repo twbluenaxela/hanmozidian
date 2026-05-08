@@ -114,6 +114,8 @@ function AnnotateInner() {
   const [pageCount, setPageCount] = useState(1);
   const imgRef = useRef<HTMLImageElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const [pageSizes, setPageSizes] = useState<Record<number, { w: number; h: number }>>({});
 
 
   // If the work is "backward", create [11, 10, 9... 0]
@@ -206,10 +208,10 @@ function AnnotateInner() {
 
   const handleImageLoad = useCallback(() => {
     if (!imgRef.current) return;
-    const naturalWidth = imgRef.current.naturalWidth;
-    const currentWidth = imgRef.current.clientWidth;
-    setRenderScale(currentWidth / naturalWidth);
-  }, []);
+    const { naturalWidth, naturalHeight, clientWidth } = imgRef.current;
+    setRenderScale(clientWidth / naturalWidth);
+    setPageSizes((prev) => ({ ...prev, [currentPage]: { w: naturalWidth, h: naturalHeight } }));
+  }, [currentPage]);
 
   useEffect(() => {
     if (!imgRef.current || imageSize.w === 1) return;
@@ -246,6 +248,14 @@ function AnnotateInner() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds]);
+
+  // Scroll preview strip to the first selected box
+  useEffect(() => {
+    if (selectedIds.size !== 1 || !previewScrollRef.current) return;
+    const id = [...selectedIds][0];
+    const el = previewScrollRef.current.querySelector<HTMLElement>(`[data-box-id="${id}"]`);
+    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [selectedIds]);
 
   const applyShiwen = useCallback((chars: string[]) => {
@@ -819,6 +829,80 @@ function AnnotateInner() {
                 }}
               />
             )}
+          </div>
+        </div>
+
+        {/* Character preview strip */}
+        <div className="shrink-0 w-44 border-l border-[var(--border)] flex flex-col overflow-hidden">
+          <div className="shrink-0 px-3 py-2 border-b border-[var(--border)] bg-[var(--card-bg)]">
+            <p className="text-[10px] uppercase font-bold text-[var(--accent)]">字預覽</p>
+            <p className="text-[11px] text-[var(--muted)] tabular-nums">
+              {globalOrdered.length} / {shiwenChars.length} 字
+            </p>
+          </div>
+          <div ref={previewScrollRef} className="flex-1 overflow-y-auto p-2 space-y-1">
+            {/* Hidden images so we get natural dimensions for every page */}
+            {Array.from({ length: pageCount }, (_, p) => p)
+              .filter((p) => !pageSizes[p])
+              .map((p) => (
+                <img
+                  key={p}
+                  src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${p}`}
+                  style={{ display: "none", position: "absolute", pointerEvents: "none" }}
+                  onLoad={(e) => {
+                    const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
+                    setPageSizes((prev) => ({ ...prev, [p]: { w, h } }));
+                  }}
+                />
+              ))}
+            {globalOrdered.length === 0 && (
+              <p className="text-xs text-[var(--muted)] text-center pt-6">尚無框選</p>
+            )}
+            {globalOrdered.map((box, idx) => {
+              const isSelected = selectedIds.has(box.id);
+              const pageImgUrl = `/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${box.page}`;
+              const PREVIEW = 64;
+              const nat = pageSizes[box.page];
+              const s = nat && box.w > 0 && box.h > 0
+                ? Math.min(PREVIEW / box.w, PREVIEW / box.h)
+                : 1;
+              const offsetX = nat ? (PREVIEW - box.w * s) / 2 : 0;
+              const offsetY = nat ? (PREVIEW - box.h * s) / 2 : 0;
+              return (
+                <div
+                  key={box.id}
+                  data-box-id={box.id}
+                  onClick={() => {
+                    setSelectedIds(new Set([box.id]));
+                    if (box.page !== currentPage) setCurrentPage(box.page);
+                  }}
+                  className={`flex items-center gap-2 px-1.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                    isSelected
+                      ? "bg-[var(--accent)] bg-opacity-15 ring-1 ring-[var(--accent)]"
+                      : "hover:bg-[var(--card-bg)]"
+                  }`}
+                >
+                  <span className="text-[9px] text-[var(--muted)] tabular-nums w-4 shrink-0 text-right">
+                    {idx + 1}
+                  </span>
+                  <div
+                    style={{
+                      width: PREVIEW,
+                      height: PREVIEW,
+                      backgroundImage: nat ? `url(${pageImgUrl})` : "none",
+                      backgroundSize: nat ? `${nat.w * s}px ${nat.h * s}px` : "0 0",
+                      backgroundPosition: `${-box.x * s + offsetX}px ${-box.y * s + offsetY}px`,
+                      backgroundRepeat: "no-repeat",
+                      backgroundColor: "var(--card-bg)",
+                    }}
+                    className="shrink-0 rounded border border-[var(--border)]"
+                  />
+                  <span className="font-display text-xl leading-none min-w-0">
+                    {box.char || "?"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
