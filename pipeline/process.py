@@ -431,35 +431,6 @@ def save_debug_image(
     print(f"  Debug image saved → {out_path}")
 
 
-# ── PaddleOCR detection (optional enhancement) ───────────────────────────────
-
-def detect_with_paddle(img_color: np.ndarray) -> list[dict]:
-    """
-    Run PaddleOCR text detection to get character-level bounding boxes.
-    Falls back gracefully if PaddleOCR is not installed.
-    """
-    try:
-        from paddleocr import PaddleOCR
-        ocr = PaddleOCR(use_textline_orientation=False, lang="ch", enable_mkldnn=False)
-        results = ocr.predict(img_color)
-        boxes = []
-        for res in results:
-            polys = res.get("dt_polys", [])
-            scores = res.get("rec_scores", [])
-            for i, pts in enumerate(polys):
-                xs = [p[0] for p in pts]
-                ys = [p[1] for p in pts]
-                x, y = int(min(xs)), int(min(ys))
-                w = int(max(xs) - min(xs))
-                h = int(max(ys) - min(ys))
-                conf = float(scores[i]) if i < len(scores) else 0.5
-                boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": conf, "source": "paddle"})
-        return boxes
-    except Exception as e:
-        print(f"  PaddleOCR unavailable ({type(e).__name__}: {e}), falling back to projection")
-        return []
-
-
 # ── Main processing ───────────────────────────────────────────────────────────
 
 def process_work(identifier: str, force_split: bool = False, debug: bool = False,
