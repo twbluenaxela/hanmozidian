@@ -50,16 +50,11 @@ def save_index(index: dict):
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 
 def _strip_is_colorful(region: np.ndarray) -> bool:
-    """Return True if the region contains NPM colour-calibration patches."""
+    """Return True if the region contains NPM colour-calibration patches (Macbeth / gradient bar)."""
     hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-    gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
-    h, w = gray.shape
+    h, w = region.shape[:2]
     high_sat = (hsv[:, :, 1] > 80).sum()
-    col_std = float(np.std(np.mean(gray, axis=0).astype(float)))
-    return (
-        high_sat > (h * w * 0.05)
-        or col_std > 30
-    )
+    return high_sat > (h * w * 0.05)
 
 
 def strip_color_bar(img: np.ndarray) -> np.ndarray:
@@ -72,8 +67,7 @@ def strip_color_bar(img: np.ndarray) -> np.ndarray:
         cutline = h
         for row in range(h - 1, h - check_h - 1, -1):
             row_hsv = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2HSV)
-            row_gray = cv2.cvtColor(img[row:row+1, :], cv2.COLOR_BGR2GRAY)[0].astype(float)
-            if (row_hsv[:, :, 1] > 80).sum() > w * 0.05 or float(row_gray.std()) > 30:
+            if (row_hsv[:, :, 1] > 80).sum() > w * 0.05:
                 cutline = row
         img = img[:cutline, :]
         h = img.shape[0]
@@ -84,8 +78,7 @@ def strip_color_bar(img: np.ndarray) -> np.ndarray:
         cutcol = w
         for col in range(w - 1, w - check_w - 1, -1):
             col_hsv = cv2.cvtColor(img[:, col:col+1], cv2.COLOR_BGR2HSV)
-            col_gray = cv2.cvtColor(img[:, col:col+1], cv2.COLOR_BGR2GRAY)[:, 0].astype(float)
-            if (col_hsv[:, :, 1] > 80).sum() > h * 0.05 or float(col_gray.std()) > 30:
+            if (col_hsv[:, :, 1] > 80).sum() > h * 0.05:
                 cutcol = col
         img = img[:, :cutcol]
 
@@ -94,22 +87,55 @@ def strip_color_bar(img: np.ndarray) -> np.ndarray:
 
 def isolate_text_region(img: np.ndarray) -> np.ndarray:
     """
-    Detect and crop the main text block, excluding title panels
-    (which have a distinctly different background tone).
+    Crop to the scroll paper — the large bright region in the centre of the photo.
+    The dark mount background and colour-chart area on the sides are excluded by
+    finding the longest contiguous run of bright columns.
     """
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
 
     col_means = np.mean(gray, axis=0)
-    text_cols = col_means < np.percentile(col_means, 75)
+    # Smooth over ~30 columns so individual ink-heavy strips don't break the run.
+    kernel = np.ones(30) / 30
+    smoothed = np.convolve(col_means, kernel, mode="same")
+    # Scroll paper is much brighter than the surrounding dark mount/chart.
+    bright = smoothed > np.percentile(smoothed, 40)
 
-    indices = np.where(text_cols)[0]
-    if len(indices) < w * 0.3:
-        return img  # fallback: return full image
+    # Find the longest contiguous run of bright columns — that's the scroll body.
+    best_start, best_len = 0, 0
+    cur_start, cur_len = 0, 0
+    for x in range(w):
+        if bright[x]:
+            if cur_len == 0:
+                cur_start = x
+            cur_len += 1
+            if cur_len > best_len:
+                best_len, best_start = cur_len, cur_start
+        else:
+            cur_len = 0
 
-    left = max(0, indices[0] - 10)
-    right = min(w, indices[-1] + 10)
-    return img[:, left:right]
+    if best_len < w * 0.15:
+        return img  # fallback: image is unusual, return as-is
+
+    left = max(0, best_start - 5)
+    right = min(w, best_start + best_len + 5)
+    img = img[:, left:right]
+
+    # ── Vertical crop: remove mounting fabric at top/bottom ───────────────────
+    # The scroll paper is much brighter than the teal/dark mounting fabric.
+    gray2 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    row_means = np.mean(gray2, axis=1)
+    kernel2 = np.ones(15) / 15
+    smoothed_rows = np.convolve(row_means, kernel2, mode="same")
+    paper_rows = smoothed_rows > np.percentile(smoothed_rows, 30)
+
+    indices_v = np.where(paper_rows)[0]
+    if len(indices_v) > img.shape[0] * 0.2:
+        top = max(0, indices_v[0] - 3)
+        bottom = min(img.shape[0], indices_v[-1] + 3)
+        img = img[top:bottom, :]
+
+    return img
 
 
 def binarize(img: np.ndarray) -> np.ndarray:
@@ -152,7 +178,14 @@ def detect_columns(binary: np.ndarray) -> list[tuple[int, int]]:
     kernel = np.ones(5) / 5
     projection = np.convolve(projection, kernel, mode="same")
 
-    threshold = projection.mean() * 0.6
+    # Border lines (scroll edge, ruler lines) show as solid vertical bands where
+    # projection ≈ h (nearly every row is dark). Exclude them from the threshold
+    # calculation so they don't inflate the mean and hide real text columns.
+    text_proj = projection[projection < h * 0.75]
+    if len(text_proj) < w * 0.1:
+        text_proj = projection  # unusual image — fall back to full mean
+    threshold = text_proj.mean() * 0.6
+
     # Require this many consecutive low-ink columns before closing a column,
     # preventing a single noisy stroke from splitting a real column.
     MIN_GAP = 8
@@ -201,62 +234,134 @@ def detect_columns(binary: np.ndarray) -> list[tuple[int, int]]:
 
 # ── Character detection within a column ──────────────────────────────────────
 
-def _split_blob(mask: np.ndarray) -> list[tuple[int, int, int, int]]:
+def _split_blob_recursive(
+    orig: np.ndarray, max_h: int, depth: int = 0
+) -> list[tuple[int, int, int, int]]:
     """
-    Split an oversized blob at the row with minimum ink — the gap between two characters.
-    Avoids the top/bottom 15% to prevent splitting at a stroke edge.
+    Recursively split an oversized blob at the row with minimum ink.
+    `orig` is the pre-closing inverted image — gaps are real gaps there,
+    not filled in by morphological closing.
+    Stops when each piece is under max_h or recursion depth reaches 4.
     """
-    h, w = mask.shape
-    projection = (mask > 0).sum(axis=1).astype(float)
-    margin = max(8, h // 6)
-    search_region = projection[margin: h - margin]
-    if len(search_region) == 0:
+    h, w = orig.shape
+    if h <= max_h or depth >= 4:
         return [(0, 0, w, h)]
-    split = int(np.argmin(search_region)) + margin
-    parts = []
-    if split > 10:
-        parts.append((0, 0, w, split))
-    if h - split > 10:
-        parts.append((0, split, w, h - split))
-    return parts if parts else [(0, 0, w, h)]
+
+    projection = (orig > 0).sum(axis=1).astype(float)
+    # Avoid the outer 10% so we don't split right at a stroke edge.
+    margin = max(5, h // 10)
+    search = projection[margin: h - margin]
+    if len(search) == 0:
+        return [(0, 0, w, h)]
+
+    split = int(np.argmin(search)) + margin
+
+    if split < 5 or h - split < 5:
+        return [(0, 0, w, h)]
+
+    top_parts = _split_blob_recursive(orig[:split, :], max_h, depth + 1)
+    bot_parts = _split_blob_recursive(orig[split:, :], max_h, depth + 1)
+
+    result = list(top_parts)
+    result += [(x, split + y, sw, sh) for x, y, sw, sh in bot_parts]
+    return result
 
 
-def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int, close_kernel_h: int = 6) -> list[tuple[int, int, int, int]]:
+def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int, close_kernel_h: int = 6, split_ratio: float = 1.5) -> list[tuple[int, int, int, int]]:
     """
     Connected-components character detection within a column strip.
-    Uses morphological closing to bridge stroke gaps within a character,
-    then splits oversized blobs (touching chars) with watershed.
     Returns list of (x, y, w, h) bounding boxes, top-to-bottom.
     """
     col = binary[:, x1:x2]
     h, w = col.shape
 
     inv = cv2.bitwise_not(col)
-    # Narrow width avoids bleeding across column boundaries;
-    # tall height connects vertical stroke fragments within one character.
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, close_kernel_h))
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (6, close_kernel_h))
     closed = cv2.morphologyEx(inv, cv2.MORPH_CLOSE, kernel)
 
-    num_labels, label_map, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
+    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
 
-    max_char_h = max(30, int(h * 0.35))
     min_area = max(150, int((w * 0.1) ** 2))
 
-    boxes: list[tuple[int, int, int, int]] = []
+    blobs = []
     for i in range(1, num_labels):
         bx, by, bw, bh, area = stats[i]
-        if area < min_area:
-            continue
+        if area >= min_area:
+            blobs.append((int(bx), int(by), int(bw), int(bh)))
+
+    if not blobs:
+        return []
+
+    # Use median blob height as the reference for a single character.
+    # Anything taller than 1.5× median is likely two or more merged characters.
+    median_h = float(np.median([bh for _, _, _, bh in blobs]))
+    max_char_h = max(20, int(median_h * split_ratio))
+
+    boxes: list[tuple[int, int, int, int]] = []
+    for bx, by, bw, bh in blobs:
         if bh > max_char_h:
-            # Blob spans more than one character — split at the minimum-ink row
-            blob_mask = closed[by:by+bh, bx:bx+bw].astype(np.uint8)
-            for sx, sy, sw, sh in _split_blob(blob_mask):
+            # Use the original (pre-close) strip to find split points —
+            # the closed image has the inter-character gap filled in,
+            # making the minimum ambiguous.
+            orig_blob = inv[by:by+bh, bx:bx+bw]
+            for sx, sy, sw, sh in _split_blob_recursive(orig_blob, max_char_h):
                 boxes.append((int(x1 + bx + sx), int(by + sy), int(sw), int(sh)))
         else:
             boxes.append((int(x1 + bx), int(by), int(bw), int(bh)))
 
     boxes.sort(key=lambda b: b[1])
     return boxes
+
+
+# ── Force-split by expected character count ───────────────────────────────────
+
+def force_split_column(
+    binary: np.ndarray, x1: int, x2: int, n_chars: int
+) -> list[tuple[int, int, int, int]]:
+    """
+    Divide a column into n_chars boxes using horizontal projection minima.
+    First tries to find n_chars natural split points; falls back to equal height.
+    Used when connected strokes prevent connected-component detection.
+    """
+    if n_chars <= 0:
+        return []
+    col = binary[:, x1:x2]
+    h, w = col.shape
+
+    # Equal-height fallback is always available
+    def equal_split() -> list[tuple[int, int, int, int]]:
+        seg = h / n_chars
+        return [(x1, int(i * seg), x2 - x1, max(1, int((i + 1) * seg) - int(i * seg))) for i in range(n_chars)]
+
+    if n_chars == 1:
+        return [(x1, 0, x2 - x1, h)]
+
+    # Smooth horizontal projection and find n_chars-1 best valley positions
+    proj = (col == 255).sum(axis=1).astype(float)  # white pixels per row (inv of ink)
+    ksize = max(3, h // (n_chars * 4))
+    smooth = np.convolve(proj, np.ones(ksize) / ksize, mode="same")
+
+    # Divide into n_chars zones and pick the minimum inside each zone boundary
+    splits = [0]
+    for i in range(1, n_chars):
+        zone_start = int(h * i / n_chars) - h // (n_chars * 2)
+        zone_end   = int(h * i / n_chars) + h // (n_chars * 2)
+        zone_start = max(0, zone_start)
+        zone_end   = min(h - 1, zone_end)
+        if zone_end <= zone_start:
+            continue
+        local_min = int(np.argmin(smooth[zone_start:zone_end])) + zone_start
+        splits.append(local_min)
+    splits.append(h)
+
+    boxes = []
+    for i in range(len(splits) - 1):
+        y1, y2 = splits[i], splits[i + 1]
+        if y2 - y1 < 2:
+            continue
+        boxes.append((x1, y1, x2 - x1, y2 - y1))
+
+    return boxes if len(boxes) == n_chars else equal_split()
 
 
 # ── Global box filter ─────────────────────────────────────────────────────────
@@ -271,6 +376,59 @@ def _is_plausible_char_box(b: dict) -> bool:
     if bh / bw > 5.0:   # very tall sliver — vertical stroke noise
         return False
     return True
+
+
+# ── Debug visualisation ───────────────────────────────────────────────────────
+
+def save_debug_image(
+    img_color: np.ndarray,
+    binary: np.ndarray,
+    columns: list[tuple[int, int]],
+    boxes: list[dict],
+    shiwen_chars: list[str],
+    out_path: Path,
+):
+    """
+    Save a side-by-side debug image:
+      Left  — clean colour image with detected boxes + 釋文 labels
+      Right — binary image with column boundaries
+    """
+    h, w = img_color.shape[:2]
+    SCALE = 2  # draw at 2× so text is readable
+    vis_color = cv2.resize(img_color, (w * SCALE, h * SCALE), interpolation=cv2.INTER_LINEAR)
+    vis_bin   = cv2.cvtColor(cv2.resize(binary, (w * SCALE, h * SCALE), interpolation=cv2.INTER_NEAREST), cv2.COLOR_GRAY2BGR)
+
+    COL_COLORS = [(255, 80, 80), (80, 200, 80), (80, 80, 255), (200, 200, 0), (0, 200, 200)]
+
+    # Draw column bands on both panels
+    for ci, (x1, x2) in enumerate(columns):
+        color = COL_COLORS[ci % len(COL_COLORS)]
+        cv2.rectangle(vis_color, (x1*SCALE, 0), (x2*SCALE, h*SCALE), color, 1)
+        cv2.rectangle(vis_bin,   (x1*SCALE, 0), (x2*SCALE, h*SCALE), color, 1)
+
+    # Draw boxes + 釋文 labels on the colour panel
+    # boxes are sorted right-to-left, top-to-bottom — same order as shiwen_chars
+    for idx, b in enumerate(boxes):
+        bx, by, bw, bh = b["x"], b["y"], b["w"], b["h"]
+        # colour by source
+        if b.get("source") == "force-split":
+            rect_color = (0, 165, 255)   # orange
+        else:
+            rect_color = (0, 220, 0)     # green
+
+        cv2.rectangle(vis_color, (bx*SCALE, by*SCALE), ((bx+bw)*SCALE, (by+bh)*SCALE), rect_color, 1)
+
+        char = shiwen_chars[idx] if idx < len(shiwen_chars) else "?"
+        label = f"{idx+1} {char}"
+        cv2.putText(vis_color, label,
+                    (bx*SCALE + 2, by*SCALE + 14),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 0, 200), 1, cv2.LINE_AA)
+
+    # Stitch panels side by side
+    gap = np.full((h * SCALE, 4, 3), 128, dtype=np.uint8)
+    combined = np.hstack([vis_color, gap, vis_bin])
+    cv2.imwrite(str(out_path), combined)
+    print(f"  Debug image saved → {out_path}")
 
 
 # ── PaddleOCR detection (optional enhancement) ───────────────────────────────
@@ -304,7 +462,8 @@ def detect_with_paddle(img_color: np.ndarray) -> list[dict]:
 
 # ── Main processing ───────────────────────────────────────────────────────────
 
-def process_work(identifier: str):
+def process_work(identifier: str, force_split: bool = False, debug: bool = False,
+                 close_kernel: int = 6, split_ratio: float = 1.5):
     index = load_index()
     entry = index.get(identifier)
     if not entry:
@@ -325,6 +484,9 @@ def process_work(identifier: str):
 
     print(f"Processing: {entry['name']}")
 
+    shiwen = entry.get("shiwen") or ""
+    shiwen_chars = [c for c in shiwen if c.strip() and c not in "。，、；：「」『』【】〔〕…—"]
+
     # Step 1: Preprocess
     print("  [1/3] Preprocessing...")
     img_color, binary = preprocess(img_path)
@@ -336,9 +498,13 @@ def process_work(identifier: str):
     columns = detect_columns(binary)
     print(f"        Found {len(columns)} columns")
 
+    expected_total = len(shiwen_chars)
+    # chars_per_col used by --force-split only
+    chars_per_col = (expected_total // len(columns)) if (columns and expected_total) else 0
+
     cv_boxes = []
     for x1, x2 in columns:
-        chars = detect_chars_in_column(binary, x1, x2)
+        chars = detect_chars_in_column(binary, x1, x2, close_kernel_h=close_kernel, split_ratio=split_ratio)
         for (x, y, w, h) in chars:
             cv_boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": 0.7, "source": "opencv"})
 
@@ -347,13 +513,27 @@ def process_work(identifier: str):
     if len(cv_boxes) < before:
         print(f"        Filtered {before - len(cv_boxes)} implausible boxes")
 
+    # Force-split: only when explicitly requested (--force-split / UI button).
+    # Divide each column into equal segments by 釋文 count.
+    # This handles 行書/草書 where strokes connect and confuse connected components.
+    if force_split and chars_per_col > 0 and columns:
+        print(f"        CV boxes={len(cv_boxes)}, expected={expected_total} — trying force-split…")
+        forced_boxes = []
+        for i, (x1, x2) in enumerate(columns):
+            # Give any remainder chars to the last column
+            n = chars_per_col + (expected_total % len(columns) if i == len(columns) - 1 else 0)
+            for (x, y, w, h) in force_split_column(binary, x1, x2, n):
+                forced_boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": 0.5, "source": "force-split"})
+        if len(forced_boxes) == expected_total:
+            print(f"        Force-split produced {len(forced_boxes)} boxes ✓")
+            cv_boxes = forced_boxes
+        else:
+            print(f"        Force-split gave {len(forced_boxes)}, keeping CV result")
+
     # Step 3: Merge and align with 釋文
     all_boxes = cv_boxes
     # Sort right-to-left by column centre, then top-to-bottom within each column
     all_boxes.sort(key=lambda b: (-(b["x"] + b["w"] // 2), b["y"]))
-
-    shiwen = entry.get("shiwen") or ""
-    shiwen_chars = [c for c in shiwen if c.strip() and c not in "。，、；：「」『』【】〔〕…—"]
 
     result = {
         "identifier": identifier,
@@ -371,6 +551,9 @@ def process_work(identifier: str):
         print(f"  ⚠  Box count ({len(all_boxes)}) ≠ 釋文 count ({len(shiwen_chars)}) — review needed")
     else:
         print(f"  ✓  {len(all_boxes)} boxes match {len(shiwen_chars)} 釋文 characters")
+
+    if debug:
+        save_debug_image(img_color, binary, columns, all_boxes, shiwen_chars, out_dir / "debug.jpg")
 
     boxes_file = out_dir / "boxes.json"
     boxes_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -390,8 +573,19 @@ def process_work(identifier: str):
 def main():
     parser = argparse.ArgumentParser(description="Process a calligraphy image")
     parser.add_argument("--id", required=True, metavar="IDENTIFIER", help="文物統一編號")
+    parser.add_argument("--force-split", action="store_true",
+        help="Force equal-height box split by 釋文 count (行書/草書 with connected strokes)")
+    parser.add_argument("--debug", action="store_true",
+        help="Save debug.jpg with detected columns and boxes overlaid")
+    parser.add_argument("--close-kernel", type=int, default=6, metavar="N",
+        help="筆畫黏合 — morphological closing kernel height (1-15, default 6). "
+             "Higher = more stroke fragments joined; lower = less merging.")
+    parser.add_argument("--split-ratio", type=float, default=1.5, metavar="X",
+        help="分割靈敏度 — split any blob taller than X × median char height (default 1.5). "
+             "Lower = split more aggressively.")
     args = parser.parse_args()
-    process_work(args.id)
+    process_work(args.id, force_split=args.force_split, debug=args.debug,
+                 close_kernel=args.close_kernel, split_ratio=args.split_ratio)
 
 
 if __name__ == "__main__":

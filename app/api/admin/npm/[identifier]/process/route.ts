@@ -43,15 +43,28 @@ async function ensureImageDownloaded(identifier: string): Promise<boolean> {
 }
 
 // POST /api/admin/npm/[identifier]/process
+// Body (optional JSON): { forceSplit?: boolean }
 // Downloads the image (if needed) then runs process.py to detect columns + boxes.
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ identifier: string }> }
 ) {
   const { identifier } = await params;
 
   if (!IDENTIFIER_RE.test(identifier)) {
     return NextResponse.json({ error: "invalid identifier" }, { status: 400 });
+  }
+
+  let forceSplit = false;
+  let closeKernel = 6;
+  let splitRatio = 1.5;
+  try {
+    const body = await req.json();
+    forceSplit = body?.forceSplit === true;
+    if (typeof body?.closeKernel === "number") closeKernel = Math.round(Math.min(15, Math.max(1, body.closeKernel)));
+    if (typeof body?.splitRatio === "number") splitRatio = Math.min(2.5, Math.max(1.1, body.splitRatio));
+  } catch {
+    // no body or not JSON — fine
   }
 
   const index = loadIndex();
@@ -64,9 +77,15 @@ export async function POST(
     return NextResponse.json({ error: "image download failed" }, { status: 502 });
   }
 
+  const pyArgs = [path.join(PIPELINE_DIR, "process.py"), "--id", identifier,
+    "--close-kernel", String(closeKernel),
+    "--split-ratio", String(splitRatio),
+  ];
+  if (forceSplit) pyArgs.push("--force-split");
+
   const result = spawnSync(
     PYTHON,
-    [path.join(PIPELINE_DIR, "process.py"), "--id", identifier],
+    pyArgs,
     { cwd: PIPELINE_DIR, timeout: 180_000, encoding: "utf-8", env: { ...process.env, FLAGS_use_mkldnn: "0" } }
   );
 

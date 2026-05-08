@@ -110,6 +110,8 @@ function AnnotateInner() {
   const [zoom, setZoom] = useState(1);
   const [processing, setProcessing] = useState(false);
   const [processError, setProcessError] = useState<string | null>(null);
+  const [closeKernel, setCloseKernel] = useState(6);
+  const [splitRatio, setSplitRatio] = useState(1.4);
   const [currentPage, setCurrentPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -190,12 +192,16 @@ function AnnotateInner() {
     setImageSize(boxData.imageSize);
   }, []);
 
-  const runProcessing = useCallback(async () => {
+  const runProcessing = useCallback(async (forceSplit = false) => {
     if (!identifier) return;
     setProcessing(true);
     setProcessError(null);
     try {
-      const res = await fetch(`/api/admin/npm/${encodeURIComponent(identifier)}/process`, { method: "POST" });
+      const res = await fetch(`/api/admin/npm/${encodeURIComponent(identifier)}/process`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ forceSplit, closeKernel, splitRatio }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "processing failed");
       if (data.boxes) applyBoxData(data.boxes);
@@ -204,7 +210,7 @@ function AnnotateInner() {
     } finally {
       setProcessing(false);
     }
-  }, [identifier, applyBoxData]);
+  }, [identifier, applyBoxData, closeKernel, splitRatio]);
 
   const handleImageLoad = useCallback(() => {
     if (!imgRef.current) return;
@@ -690,11 +696,44 @@ function AnnotateInner() {
                 }`}>
                 {drawMode ? "繪製模式 ✓" : "繪製新框"}
               </button>
+              <div className="space-y-2 px-1">
+                <div>
+                  <div className="flex justify-between text-xs text-[var(--muted)] mb-1">
+                    <span>筆畫黏合</span>
+                    <span className="font-mono">{closeKernel}</span>
+                  </div>
+                  <input type="range" min={1} max={15} step={1} value={closeKernel}
+                    onChange={e => setCloseKernel(Number(e.target.value))}
+                    className="w-full accent-[var(--accent)]" />
+                  <div className="flex justify-between text-[10px] text-[var(--muted)] mt-0.5">
+                    <span>分離</span><span>黏合</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs text-[var(--muted)] mb-1">
+                    <span>分割靈敏度</span>
+                    <span className="font-mono">{splitRatio.toFixed(1)}×</span>
+                  </div>
+                  <input type="range" min={1.1} max={2.5} step={0.1} value={splitRatio}
+                    onChange={e => setSplitRatio(Number(e.target.value))}
+                    className="w-full accent-[var(--accent)]" />
+                  <div className="flex justify-between text-[10px] text-[var(--muted)] mt-0.5">
+                    <span>易分割</span><span>難分割</span>
+                  </div>
+                </div>
+              </div>
               <button
-                onClick={runProcessing}
+                onClick={() => runProcessing(false)}
                 disabled={processing}
                 className="w-full py-2 rounded-lg border border-[var(--border)] text-xs font-bold transition-colors disabled:opacity-40">
                 {processing ? "偵測中..." : "偵測字框"}
+              </button>
+              <button
+                onClick={() => runProcessing(true)}
+                disabled={processing}
+                title="按釋文字數強制等分（行書/草書適用）"
+                className="w-full py-2 rounded-lg border border-[var(--border)] text-xs font-bold transition-colors disabled:opacity-40 opacity-70 hover:opacity-100">
+                {processing ? "偵測中..." : "強制等分"}
               </button>
               {processError && (
                 <p className="text-xs text-red-400 text-center">{processError}</p>
