@@ -553,6 +553,16 @@ def process_work(identifier: str, force_split: bool = False, debug: bool = False
     for b in cv_boxes:
         b.pop("_col", None)
 
+    # Add a small uniform padding so tight bounding boxes don't clip stroke
+    # tips like 點 or the very corners of 寒/歸. Clamp to image bounds.
+    img_h, img_w = binary.shape
+    PAD = 4
+    for b in cv_boxes:
+        b["x"] = max(0, b["x"] - PAD)
+        b["y"] = max(0, b["y"] - PAD)
+        b["w"] = min(img_w - b["x"], b["w"] + PAD * 2)
+        b["h"] = min(img_h - b["y"], b["h"] + PAD * 2)
+
     # Force-split: only when explicitly requested (--force-split / UI button).
     # Divide each column into equal segments by 釋文 count.
     # This handles 行書/草書 where strokes connect and confuse connected components.
