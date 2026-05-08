@@ -11,6 +11,7 @@ interface WorkSummary {
   era: string | null;
   styleSlug: string | null;
   updatedAt: string | null;
+  uploadedAt: string | null;
   charCount: number;
 }
 
@@ -278,6 +279,14 @@ function WorkCard({ work, state, isReexport, onExport, onUpload }: WorkCardProps
               {work.styleSlug && (
                 <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-[var(--accent)]/15 text-[var(--accent)]">
                   {STYLE_LABELS[work.styleSlug] ?? work.styleSlug}
+                </span>
+              )}
+              {work.uploadedAt && (
+                <span
+                  className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/15 text-green-400"
+                  title={`上傳於 ${work.uploadedAt}`}
+                >
+                  ✓ 已上傳
                 </span>
               )}
               {isReexport && (

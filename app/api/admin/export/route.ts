@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
       era: w.era || null,
       styleSlug: w.styleSlug || null,
       updatedAt: w.updatedAt || null,
+      uploadedAt: w.uploadedAt || null,
       charCount: countUsableBoxes(w.annotationDraft),
     }));
 

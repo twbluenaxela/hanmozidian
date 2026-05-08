@@ -54,8 +54,12 @@ export async function GET(
 
   if (filePath) {
     const buffer = fs.readFileSync(filePath);
+    const isProcessed = filePath.includes(`${path.sep}processed${path.sep}`);
     return new NextResponse(buffer, {
-      headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Cache-Control": isProcessed ? "no-store" : "private, max-age=3600",
+      },
     });
   }
 

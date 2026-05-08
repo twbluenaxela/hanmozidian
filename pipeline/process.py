@@ -61,8 +61,9 @@ def strip_color_bar(img: np.ndarray) -> np.ndarray:
     """Remove NPM colour calibration strips — bottom-mounted or right-mounted."""
     h, w = img.shape[:2]
 
-    # ── Bottom strip ──────────────────────────────────────────────────────────
-    check_h = int(h * 0.15)
+    # Only check the last 5% — enough for a real calibration strip but
+    # won't reach up into the bottom row of characters.
+    check_h = max(10, int(h * 0.05))
     if _strip_is_colorful(img[h - check_h:, :]):
         cutline = h
         for row in range(h - 1, h - check_h - 1, -1):
@@ -72,8 +73,7 @@ def strip_color_bar(img: np.ndarray) -> np.ndarray:
         img = img[:cutline, :]
         h = img.shape[0]
 
-    # ── Right strip ───────────────────────────────────────────────────────────
-    check_w = int(w * 0.25)
+    check_w = max(10, int(w * 0.05))
     if _strip_is_colorful(img[:, w - check_w:]):
         cutcol = w
         for col in range(w - 1, w - check_w - 1, -1):
@@ -85,57 +85,45 @@ def strip_color_bar(img: np.ndarray) -> np.ndarray:
     return img
 
 
-def isolate_text_region(img: np.ndarray) -> np.ndarray:
-    """
-    Crop to the scroll paper — the large bright region in the centre of the photo.
-    The dark mount background and colour-chart area on the sides are excluded by
-    finding the longest contiguous run of bright columns.
-    """
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    h, w = gray.shape
-
-    col_means = np.mean(gray, axis=0)
-    # Smooth over ~30 columns so individual ink-heavy strips don't break the run.
-    kernel = np.ones(30) / 30
-    smoothed = np.convolve(col_means, kernel, mode="same")
-    # Scroll paper is much brighter than the surrounding dark mount/chart.
-    bright = smoothed > np.percentile(smoothed, 40)
-
-    # Find the longest contiguous run of bright columns — that's the scroll body.
+def _longest_active_run(active: np.ndarray) -> tuple[int, int]:
+    """Return (start, length) of the longest contiguous True run in a 1-D boolean array."""
     best_start, best_len = 0, 0
     cur_start, cur_len = 0, 0
-    for x in range(w):
-        if bright[x]:
+    for i, val in enumerate(active):
+        if val:
             if cur_len == 0:
-                cur_start = x
+                cur_start = i
             cur_len += 1
             if cur_len > best_len:
                 best_len, best_start = cur_len, cur_start
         else:
             cur_len = 0
+    return best_start, best_len
+
+
+def isolate_text_region(img: np.ndarray) -> np.ndarray:
+    """
+    Crop horizontally to the scroll paper using column std deviation.
+    High std = ink contrast = text. Low std = uniform border (dark mount
+    or light mat — doesn't matter, both have low variance).
+    No vertical crop — that caused bottom-row losses.
+    """
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+
+    col_std = np.std(gray.astype(float), axis=0)
+    kernel = np.ones(30) / 30
+    smoothed = np.convolve(col_std, kernel, mode="same")
+    active = smoothed > np.percentile(smoothed, 40)
+
+    best_start, best_len = _longest_active_run(active)
 
     if best_len < w * 0.15:
-        return img  # fallback: image is unusual, return as-is
+        return img  # unusual image — return as-is
 
-    left = max(0, best_start - 5)
+    left  = max(0, best_start - 5)
     right = min(w, best_start + best_len + 5)
-    img = img[:, left:right]
-
-    # ── Vertical crop: remove mounting fabric at top/bottom ───────────────────
-    # The scroll paper is much brighter than the teal/dark mounting fabric.
-    gray2 = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    row_means = np.mean(gray2, axis=1)
-    kernel2 = np.ones(15) / 15
-    smoothed_rows = np.convolve(row_means, kernel2, mode="same")
-    paper_rows = smoothed_rows > np.percentile(smoothed_rows, 30)
-
-    indices_v = np.where(paper_rows)[0]
-    if len(indices_v) > img.shape[0] * 0.2:
-        top = max(0, indices_v[0] - 3)
-        bottom = min(img.shape[0], indices_v[-1] + 3)
-        img = img[top:bottom, :]
-
-    return img
+    return img[:, left:right]
 
 
 def binarize(img: np.ndarray) -> np.ndarray:
@@ -152,6 +140,25 @@ def binarize(img: np.ndarray) -> np.ndarray:
     return binary
 
 
+def mask_red_ink(img: np.ndarray) -> np.ndarray:
+    """
+    Replace red/orange pixels (seals, stamps) with white so they are
+    invisible to the binarizer and don't get detected as characters.
+    Seals in Chinese calligraphy are almost always vermillion/red ink.
+    """
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    # Red wraps around hue=0: low range 0-15, high range 165-180
+    mask_low  = cv2.inRange(hsv, (0,   80, 60), (15,  255, 255))
+    mask_high = cv2.inRange(hsv, (165, 80, 60), (180, 255, 255))
+    red_mask  = cv2.bitwise_or(mask_low, mask_high)
+    # Dilate slightly to catch anti-aliased edges around seal strokes
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    red_mask = cv2.dilate(red_mask, kernel, iterations=1)
+    result = img.copy()
+    result[red_mask > 0] = 255
+    return result
+
+
 def preprocess(img_path: Path) -> tuple[np.ndarray, np.ndarray]:
     """Return (color_cropped, binary_cropped)."""
     img = cv2.imread(str(img_path))
@@ -160,7 +167,8 @@ def preprocess(img_path: Path) -> tuple[np.ndarray, np.ndarray]:
 
     img = strip_color_bar(img)
     img = isolate_text_region(img)
-    binary = binarize(img)
+    masked = mask_red_ink(img)
+    binary = binarize(masked)
     return img, binary
 
 
@@ -286,8 +294,16 @@ def detect_chars_in_column(binary: np.ndarray, x1: int, x2: int, close_kernel_h:
     blobs = []
     for i in range(1, num_labels):
         bx, by, bw, bh, area = stats[i]
-        if area >= min_area:
-            blobs.append((int(bx), int(by), int(bw), int(bh)))
+        if area < min_area:
+            continue
+        # Seal frames are large but hollow — ink fills only the border.
+        # Compute ink density on the *original* (pre-close) inv strip so
+        # closing doesn't inflate density artificially.
+        blob_inv = inv[by:by+bh, bx:bx+bw]
+        density = float((blob_inv > 0).sum()) / max(1, bw * bh)
+        if density < 0.06 and bw * bh > min_area * 4:
+            continue  # hollow frame — skip
+        blobs.append((int(bx), int(by), int(bw), int(bh)))
 
     if not blobs:
         return []

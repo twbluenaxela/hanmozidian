@@ -48,6 +48,7 @@
 | 管理後台（隊列） | `app/admin/page.tsx` |
 | 管理後台（標注畫布） | `app/admin/annotate/page.tsx` |
 | 管理後台架構文件 | `app/admin/AGENT.md` |
+| OpenCV 字元偵測 pipeline 架構文件 | `pipeline/AGENT.md` |
 | PWA manifest | `app/manifest.ts` |
 | PWA icons | `public/icon-192.png`, `public/icon-512.png` |
 | 搜尋 API | `app/api/search/route.ts` |

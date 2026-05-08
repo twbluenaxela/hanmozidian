@@ -96,6 +96,7 @@ function AnnotateInner() {
   const [displayNameInput, setDisplayNameInput] = useState("");
   const [sourceBlurbInput, setSourceBlurbInput] = useState("");
   const [drawMode, setDrawMode] = useState(false);
+  const [cutMode, setCutMode] = useState(false);
   const [drawing, setDrawing] = useState<{ x: number; y: number } | null>(null);
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; origX: number; origY: number } | null>(null);
   const resizingRef = useRef<{
@@ -106,6 +107,8 @@ function AnnotateInner() {
   const [, forceUpdate] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [exportPhase, setExportPhase] = useState<"idle"|"exporting"|"uploading"|"done"|"error">("idle");
+  const [exportMsg, setExportMsg] = useState("");
   const [scale, setScale] = useState(1);
   const [zoom, setZoom] = useState(1);
   const [processing, setProcessing] = useState(false);
@@ -114,7 +117,9 @@ function AnnotateInner() {
   const [splitRatio, setSplitRatio] = useState(1.4);
   const [currentPage, setCurrentPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+  const [imgVersion, setImgVersion] = useState(0);
   const imgRef = useRef<HTMLImageElement>(null);
+  const saveDraftRef = useRef<((status?: string) => Promise<void>) | null>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const [pageSizes, setPageSizes] = useState<Record<number, { w: number; h: number }>>({});
@@ -170,26 +175,35 @@ function AnnotateInner() {
           setShiwenInput(draft.shiwenChars?.join("") || work.shiwen || "");
           setImageSize(draft.imageSize || { w: 1, h: 1 });
         } else if (boxData) {
-          applyBoxData(boxData);
+          applyBoxData(boxData, work.shiwen || "");
         } else {
           setShiwenInput(work.shiwen || "");
         }
       });
   }, [identifier]);
 
-  const applyBoxData = useCallback((boxData: BoxesData) => {
+  const applyBoxData = useCallback((boxData: BoxesData, currentShiwen: string) => {
+    // Prefer whatever the user has already typed over what process.py read from disk.
+    // process.py reads works_index.json which may lag behind the UI's unsaved input.
+    const shiwen = currentShiwen.trim()
+      ? currentShiwen.trim().split("").filter(c => c.trim() && !"。，、；：「」『』【】〔〕…—".includes(c))
+      : boxData.shiwen;
     const mapped: Box[] = boxData.boxes.map((b, i) => ({
       id: makeId(),
       x: b.x, y: b.y, w: b.w, h: b.h,
       confidence: b.confidence,
       source: b.source as Box["source"],
-      char: boxData.shiwen[i] || "",
+      char: shiwen[i] || "",
       page: 0,
     }));
     setBoxes(mapped);
-    setShiwenChars(boxData.shiwen);
-    handleShiwenChange(boxData.shiwen.join(""));
+    setShiwenChars(shiwen);
+    if (!currentShiwen.trim() && boxData.shiwen.length > 0) {
+      handleShiwenChange(boxData.shiwen.join(""));
+    }
     setImageSize(boxData.imageSize);
+    setPageSizes({});
+    setImgVersion((v) => v + 1);
   }, []);
 
   const runProcessing = useCallback(async (forceSplit = false) => {
@@ -197,6 +211,8 @@ function AnnotateInner() {
     setProcessing(true);
     setProcessError(null);
     try {
+      // Save first so process.py reads the latest 釋文 from works_index.json
+      await saveDraftRef.current?.("annotating");
       const res = await fetch(`/api/admin/npm/${encodeURIComponent(identifier)}/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -204,13 +220,13 @@ function AnnotateInner() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "processing failed");
-      if (data.boxes) applyBoxData(data.boxes);
+      if (data.boxes) applyBoxData(data.boxes, shiwenInput);
     } catch (e: any) {
       setProcessError(e.message);
     } finally {
       setProcessing(false);
     }
-  }, [identifier, applyBoxData, closeKernel, splitRatio]);
+  }, [identifier, applyBoxData, closeKernel, splitRatio, shiwenInput]);
 
   const handleImageLoad = useCallback(() => {
     if (!imgRef.current) return;
@@ -280,8 +296,19 @@ function AnnotateInner() {
   };
 
   // Box interactions
+  const handleCutBox = (e: React.MouseEvent, id: string) => {
+    if (!cutMode) return;
+    e.stopPropagation();
+    const box = boxes.find(b => b.id === id);
+    if (!box || box.h < 4) return;
+    const half = Math.floor(box.h / 2);
+    const top: Box = { ...box, id: crypto.randomUUID(), h: half };
+    const bot: Box = { ...box, id: crypto.randomUUID(), y: box.y + half, h: box.h - half };
+    setBoxes(prev => prev.flatMap(b => b.id === id ? [top, bot] : [b]));
+  };
+
   const handleBoxMouseDown = (e: React.MouseEvent, id: string) => {
-    if (drawMode) return;
+    if (drawMode || cutMode) return;
     e.stopPropagation();
     if (!e.shiftKey) {
       setSelectedIds(new Set([id]));
@@ -290,7 +317,7 @@ function AnnotateInner() {
   };
 
   const handleResizeMouseDown = (e: React.MouseEvent, id: string, handle: ResizeHandle) => {
-    if (drawMode) return;
+    if (drawMode || cutMode) return;
     e.stopPropagation();
     e.preventDefault();
     const box = boxes.find(b => b.id === id)!;
@@ -484,6 +511,37 @@ function AnnotateInner() {
       setTimeout(() => setSaveMsg(""), 3000);
     }
   }, [work, boxes, shiwenChars, imageSize, shiwenInput, calligrapherInput, styleInput, displayNameInput, sourceBlurbInput]);
+  saveDraftRef.current = saveDraft;
+
+  const runExport = useCallback(async () => {
+    if (!work) return;
+    const id = work.identifier;
+    setExportPhase("exporting");
+    setExportMsg("匯出中…");
+    try {
+      const res = await fetch("/api/admin/export", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, force: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setExportPhase("error"); setExportMsg(data.error || "匯出失敗"); return; }
+      setExportPhase("uploading");
+      setExportMsg("上傳中…");
+      const upRes = await fetch("/api/admin/export/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const upData = await upRes.json();
+      if (!upRes.ok) { setExportPhase("error"); setExportMsg(upData.error || "上傳失敗"); return; }
+      setExportPhase("done");
+      setExportMsg("✓ 已匯出");
+    } catch (e: any) {
+      setExportPhase("error");
+      setExportMsg(e.message || "網路錯誤");
+    }
+  }, [work]);
 
   // Auto-save draft every 30 seconds
   useEffect(() => {
@@ -494,7 +552,7 @@ function AnnotateInner() {
 
   const totalBoxes = boxes.length;
   const countMatch = totalBoxes === shiwenChars.length;
-  const canFinish = countMatch && styleInput.trim().length > 0;
+  const canFinish = countMatch && styleInput.trim().length > 0 && boxes.length > 0;
 
   const singleSelectedBox = selectedIds.size === 1 ? boxes.find((b) => b.id === [...selectedIds][0]) : undefined;
   const globalOrdered = sortedGlobalOrder(boxes);
@@ -566,10 +624,20 @@ function AnnotateInner() {
           <button
             onClick={() => saveDraft("done")}
             disabled={!canFinish}
-            title={!countMatch ? "框選數與釋文字數不符" : !styleInput.trim() ? "請先選擇書體" : ""}
+            title={boxes.length === 0 ? "尚未框選任何字符" : !countMatch ? "框選數與釋文字數不符" : !styleInput.trim() ? "請先選擇書體" : ""}
             className="px-3 py-1.5 text-xs rounded-lg bg-[var(--accent)] text-[var(--background)] font-bold hover:scale-105 transition-all disabled:opacity-40 disabled:scale-100">
             確認完成
           </button>
+          <button
+            onClick={exportPhase === "error" ? () => { setExportPhase("idle"); setExportMsg(""); } : runExport}
+            disabled={work?.status !== "done" || exportPhase === "exporting" || exportPhase === "uploading" || exportPhase === "done"}
+            title={work?.status !== "done" ? "請先確認完成" : exportPhase === "done" ? "已匯出" : ""}
+            className="px-3 py-1.5 text-xs rounded-lg border border-[var(--border)] font-bold transition-all disabled:opacity-40">
+            {exportPhase === "exporting" ? "匯出中…" : exportPhase === "uploading" ? "上傳中…" : exportPhase === "done" ? "✓ 已匯出" : exportPhase === "error" ? "⚠ 重試" : "匯出"}
+          </button>
+          {exportPhase === "error" && (
+            <span className="text-xs text-red-400">{exportMsg}</span>
+          )}
         </div>
       </div>
 
@@ -689,13 +757,23 @@ function AnnotateInner() {
           <div>
             <p className="text-[10px] uppercase font-bold text-[var(--accent)] mb-2">工具</p>
             <div className="space-y-2">
-              <button
-                onClick={() => setDrawMode((v) => !v)}
-                className={`w-full py-2 rounded-lg border text-xs font-bold transition-colors ${
-                  drawMode ? "bg-[var(--accent)] text-[var(--background)]" : "border-[var(--border)]"
-                }`}>
-                {drawMode ? "繪製模式 ✓" : "繪製新框"}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setDrawMode((v) => !v); setCutMode(false); }}
+                  className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-colors ${
+                    drawMode ? "bg-[var(--accent)] text-[var(--background)]" : "border-[var(--border)]"
+                  }`}>
+                  {drawMode ? "繪製 ✓" : "繪製新框"}
+                </button>
+                <button
+                  onClick={() => { setCutMode((v) => !v); setDrawMode(false); }}
+                  title="剪切模式：點擊任意框將其對切為上下兩半"
+                  className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-colors ${
+                    cutMode ? "bg-[var(--accent)] text-[var(--background)]" : "border-[var(--border)]"
+                  }`}>
+                  {cutMode ? "剪切 ✓" : "✂ 剪切"}
+                </button>
+              </div>
               <div className="space-y-2 px-1">
                 <div>
                   <div className="flex justify-between text-xs text-[var(--muted)] mb-1">
@@ -768,7 +846,7 @@ function AnnotateInner() {
         <div ref={viewportRef} className="flex-1 overflow-auto p-4 bg-[var(--background)]">
           <div
             ref={canvasRef}
-            className={`relative inline-block select-none ${drawMode ? "cursor-crosshair" : "cursor-default"}`}
+            className={`relative inline-block select-none ${drawMode ? "cursor-crosshair" : cutMode ? "cursor-crosshair" : "cursor-default"}`}
             style={{
               transform: `scale(${zoom})`,
               transformOrigin: "top left",
@@ -780,7 +858,7 @@ function AnnotateInner() {
             <img
               key={`${identifier}-p${currentPage}`}
               ref={imgRef}
-              src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${currentPage}`}
+              src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${currentPage}&v=${imgVersion}`}
               style={{ display: "block", maxWidth: "100%", height: "auto" }}
               alt={work.name}
               className="block"
@@ -798,17 +876,8 @@ function AnnotateInner() {
                 <div
                   key={box.id}
                   onMouseDown={(e) => handleBoxMouseDown(e, box.id)}
-                  style={{
-                    position: "absolute",
-                    left: box.x * renderScale,
-                    top: box.y * renderScale,
-                    width: box.w * renderScale,
-                    height: box.h * renderScale,
-                    border: `2px solid ${color}`,
-                    boxSizing: "border-box",
-                    cursor: drawMode ? "crosshair" : "move",
-                  }}
                   onClick={(e) => {
+                    if (cutMode) { handleCutBox(e, box.id); return; }
                     e.stopPropagation();
                     if (e.shiftKey) {
                       setSelectedIds((prev) => {
@@ -819,6 +888,16 @@ function AnnotateInner() {
                     } else {
                       setSelectedIds(new Set([box.id]));
                     }
+                  }}
+                  style={{
+                    position: "absolute",
+                    left: box.x * renderScale,
+                    top: box.y * renderScale,
+                    width: box.w * renderScale,
+                    height: box.h * renderScale,
+                    border: `2px solid ${color}`,
+                    boxSizing: "border-box",
+                    cursor: cutMode ? "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath fill='%23333' d='M9.64 7.64c.23-.5.36-1.05.36-1.64C10 4.07 8.43 2.5 6.5 2.5S3 4.07 3 6c0 1.93 1.57 3.5 3.5 3.5.59 0 1.14-.13 1.64-.36L10 11l-1.86 1.86C7.64 12.63 7.09 12.5 6.5 12.5 4.57 12.5 3 14.07 3 16s1.57 3.5 3.5 3.5S10 17.93 10 16c0-.59-.13-1.14-.36-1.64L11 13l7 7h3v-1L9.64 7.64zM6.5 8C5.67 8 5 7.33 5 6.5S5.67 5 6.5 5 8 5.67 8 6.5 7.33 8 6.5 8zm0 10c-.83 0-1.5-.67-1.5-1.5S5.67 15 6.5 15s1.5.67 1.5 1.5S7.33 18 6.5 18zm5.5-6.5c-.28 0-.5-.22-.5-.5s.22-.5.5-.5.5.22.5.5-.22.5-.5.5zM19 3l-7 7 1.5 1.5 7.5-7.5V3h-2z'/%3E%3C/svg%3E\") 0 24, crosshair" : drawMode ? "crosshair" : "move",
                   }}
                 >
                   <span style={{
@@ -886,7 +965,7 @@ function AnnotateInner() {
               .map((p) => (
                 <img
                   key={p}
-                  src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${p}`}
+                  src={`/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${p}&v=${imgVersion}`}
                   style={{ display: "none", position: "absolute", pointerEvents: "none" }}
                   onLoad={(e) => {
                     const { naturalWidth: w, naturalHeight: h } = e.currentTarget;
@@ -899,7 +978,7 @@ function AnnotateInner() {
             )}
             {globalOrdered.map((box, idx) => {
               const isSelected = selectedIds.has(box.id);
-              const pageImgUrl = `/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${box.page}`;
+              const pageImgUrl = `/api/admin/npm-image/${encodeURIComponent(identifier)}?type=clean&page=${box.page}&v=${imgVersion}`;
               const PREVIEW = 64;
               const nat = pageSizes[box.page];
               const s = nat && box.w > 0 && box.h > 0

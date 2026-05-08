@@ -166,16 +166,9 @@ python pipeline/fetch_pages.py --id <identifier>
 python pipeline/process.py --id <identifier>
 ```
 
-`process.py` steps:
-1. `strip_color_bar` — removes NPM color calibration strip at bottom (detects by saturation + tonal gradient, walks entire check region to find topmost bar row)
-2. `isolate_text_region` — crops out title/colophon panels by column brightness
-3. `binarize` — adaptive Gaussian threshold
-4. `detect_columns` — vertical projection, right-to-left column order
-5. `detect_chars_in_column` — horizontal projection within each column
-6. `detect_with_paddle` — PaddleOCR (optional; used if installed, else falls back to projection)
-7. Saves `boxes.json` with merged results
+`process.py` steps: strip colour bar → isolate scroll paper → binarize → detect columns → detect chars per column → expand boxes horizontally → save `boxes.json`. See `pipeline/AGENT.md` for full details.
 
-**Known issue (strip_color_bar):** The check region is 15% of image height. If a color bar is taller than 15% of the image, it won't be fully detected. Adjust `check_height` if needed.
+**Full OpenCV pipeline documentation:** See `pipeline/AGENT.md` for architecture, tuning parameters, known problem cases, and NPM image composition details.
 
 ---
 
