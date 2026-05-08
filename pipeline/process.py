@@ -364,6 +364,64 @@ def force_split_column(
     return boxes if len(boxes) == n_chars else equal_split()
 
 
+# ── Horizontal stroke expansion ──────────────────────────────────────────────
+
+def expand_boxes_horizontally(
+    binary: np.ndarray,
+    boxes: list[dict],
+    max_expand: int = 35,
+    min_density: float = 0.06,
+) -> list[dict]:
+    """
+    Grow each box left/right to capture strokes that extend past the column
+    boundary (e.g. 寒's 捺, 饒's 撇).
+
+    Scans column-by-column outward from the box edge and stops at the first
+    column whose ink density (dark pixels / box height) drops below min_density.
+    This means a real stroke (consistent ink) keeps expanding, while paper
+    texture noise (sparse, non-consecutive) stops the expansion immediately.
+    """
+    img_h, img_w = binary.shape
+    expanded = []
+
+    for b in boxes:
+        bx, by, bw, bh = b["x"], b["y"], b["w"], b["h"]
+        y1 = max(0, by)
+        y2 = min(img_h, by + bh)
+        if y2 <= y1:
+            expanded.append(b)
+            continue
+
+        strip_h = y2 - y1
+        min_px = max(2, int(strip_h * min_density))
+
+        # Expand right: walk outward, stop at first thin column
+        right_exp = 0
+        for dx in range(1, max_expand + 1):
+            x = bx + bw - 1 + dx
+            if x >= img_w:
+                break
+            if (binary[y1:y2, x] == 0).sum() >= min_px:
+                right_exp = dx
+            else:
+                break
+
+        # Expand left
+        left_exp = 0
+        for dx in range(1, max_expand + 1):
+            x = bx - dx
+            if x < 0:
+                break
+            if (binary[y1:y2, x] == 0).sum() >= min_px:
+                left_exp = dx
+            else:
+                break
+
+        expanded.append({**b, "x": bx - left_exp, "w": bw + left_exp + right_exp})
+
+    return expanded
+
+
 # ── Global box filter ─────────────────────────────────────────────────────────
 
 def _is_plausible_char_box(b: dict) -> bool:
@@ -474,15 +532,26 @@ def process_work(identifier: str, force_split: bool = False, debug: bool = False
     chars_per_col = (expected_total // len(columns)) if (columns and expected_total) else 0
 
     cv_boxes = []
-    for x1, x2 in columns:
+    # columns is already right-to-left, so col_idx 0 = rightmost column
+    for col_idx, (x1, x2) in enumerate(columns):
         chars = detect_chars_in_column(binary, x1, x2, close_kernel_h=close_kernel, split_ratio=split_ratio)
         for (x, y, w, h) in chars:
-            cv_boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": 0.7, "source": "opencv"})
+            cv_boxes.append({"x": x, "y": y, "w": w, "h": h, "confidence": 0.7, "source": "opencv", "_col": col_idx})
 
     before = len(cv_boxes)
     cv_boxes = [b for b in cv_boxes if _is_plausible_char_box(b)]
     if len(cv_boxes) < before:
         print(f"        Filtered {before - len(cv_boxes)} implausible boxes")
+
+    # Sort by column index (right-to-left), then top-to-bottom within the column.
+    # Using the detected column index instead of box centre avoids wide strokes
+    # pushing a box's centre into the wrong column's range.
+    cv_boxes.sort(key=lambda b: (b["_col"], b["y"]))
+    cv_boxes = expand_boxes_horizontally(binary, cv_boxes)
+
+    # Strip internal column tag before writing to JSON
+    for b in cv_boxes:
+        b.pop("_col", None)
 
     # Force-split: only when explicitly requested (--force-split / UI button).
     # Divide each column into equal segments by 釋文 count.
@@ -503,8 +572,7 @@ def process_work(identifier: str, force_split: bool = False, debug: bool = False
 
     # Step 3: Merge and align with 釋文
     all_boxes = cv_boxes
-    # Sort right-to-left by column centre, then top-to-bottom within each column
-    all_boxes.sort(key=lambda b: (-(b["x"] + b["w"] // 2), b["y"]))
+    # Already sorted before expansion — preserve that order.
 
     result = {
         "identifier": identifier,
