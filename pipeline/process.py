@@ -148,8 +148,8 @@ def mask_red_ink(img: np.ndarray) -> np.ndarray:
     """
     hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
     # Red wraps around hue=0: low range 0-15, high range 165-180
-    mask_low  = cv2.inRange(hsv, (0,   80, 60), (15,  255, 255))
-    mask_high = cv2.inRange(hsv, (165, 80, 60), (180, 255, 255))
+    mask_low  = cv2.inRange(hsv, np.array([0,   80, 60]), np.array([15,  255, 255]))
+    mask_high = cv2.inRange(hsv, np.array([165, 80, 60]), np.array([180, 255, 255]))
     red_mask  = cv2.bitwise_or(mask_low, mask_high)
     # Dilate slightly to catch anti-aliased edges around seal strokes
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
