@@ -61,7 +61,7 @@ export default function BeistieAdminPage() {
           <p className="text-xs text-[var(--muted)] mt-0.5">{items.length} 件碑帖</p>
         </div>
         <button
-          onClick={() => router.push("/admin/beitie/add")}
+          onClick={() => router.push("/admin/beitie/new/edit")}
           className="px-4 py-2 rounded-lg bg-[var(--accent)] text-black text-sm font-semibold hover:opacity-90 transition-opacity"
         >
           + 新增碑帖
@@ -75,7 +75,7 @@ export default function BeistieAdminPage() {
         <div className="text-center text-[var(--muted)] py-12">
           <p className="mb-4">尚無碑帖資料</p>
           <button
-            onClick={() => router.push("/admin/beitie/add")}
+            onClick={() => router.push("/admin/beitie/new/edit")}
             className="text-[var(--accent)] text-sm"
           >
             新增第一件碑帖 →
