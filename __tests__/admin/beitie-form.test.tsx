@@ -1,8 +1,10 @@
 /**
+ * @jest-environment jsdom
+ *
  * Tests for the merged beitie add/edit page.
  *
  * Route: /admin/beitie/[id]/edit
- *   id === "new"      → creation mode (NPM lookup + blank form, AI disabled until saved)
+ *   id === "new"      → creation mode (NPM lookup + blank form)
  *   id === "<number>" → edit mode (loads record, full form + AI panel)
  */
 
@@ -49,15 +51,7 @@ const SAMPLE_ITEM = {
   aiGeneratedAt: "2026-01-01T00:00:00Z",
 };
 
-function fetchOnce(data: unknown, status = 200) {
-  return jest.fn().mockResolvedValueOnce({
-    ok: status >= 200 && status < 300,
-    status,
-    json: () => Promise.resolve(data),
-  });
-}
-
-/** Build a fetch spy that handles multiple sequential calls by URL substring. */
+/** Build a fetch spy that routes calls by URL substring. */
 function buildFetchMap(map: Record<string, { data: unknown; status?: number }>) {
   return jest.fn((url: string) => {
     for (const [key, val] of Object.entries(map)) {
@@ -79,6 +73,8 @@ beforeEach(() => {
   mockPush.mockReset();
   mockReplace.mockReset();
   mockId = "new";
+  // Ensure window.history.replaceState is a fresh mock each test
+  window.history.replaceState = jest.fn();
 });
 
 // ── 1. creation mode — initial render ─────────────────────────────────────────
@@ -87,57 +83,132 @@ describe("creation mode (id=new) — initial render", () => {
   beforeEach(() => { mockId = "new"; });
 
   it("shows '新增碑帖' heading", () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ models: [] }) }) as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
     expect(screen.getByText("新增碑帖")).toBeInTheDocument();
   });
 
   it("shows NPM tab and manual tab", () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ models: [] }) }) as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
     expect(screen.getByRole("button", { name: "NPM 查詢" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "手動新增" })).toBeInTheDocument();
   });
 
   it("does not show metadata fields before NPM selection or manual tab", () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ models: [] }) }) as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
-    expect(screen.queryByLabelText(/標題/)).not.toBeInTheDocument();
-    expect(screen.queryByLabelText(/作者/)).not.toBeInTheDocument();
+    expect(screen.queryByText("標題 *")).not.toBeInTheDocument();
+    expect(screen.queryByText("作者 *")).not.toBeInTheDocument();
   });
 
   it("shows metadata fields when manual tab is selected", async () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ models: [] }) }) as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
     expect(screen.getByText("標題 *")).toBeInTheDocument();
     expect(screen.getByText("作者 *")).toBeInTheDocument();
     expect(screen.getByText("朝代 *")).toBeInTheDocument();
   });
+});
 
-  it("AI generate button is disabled before first save", async () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ models: [] }) }) as unknown as typeof fetch;
+// ── 2. creation mode — AI generate button enabled when fields are filled ───────
+
+describe("creation mode — AI generate button", () => {
+  beforeEach(() => { mockId = "new"; });
+
+  it("is ENABLED once required fields are filled in manual tab", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
+
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
+
+    const inputs = screen.getAllByRole("textbox");
+    fireEvent.change(inputs[0], { target: { value: "多寶塔碑" } });
+    fireEvent.change(inputs[1], { target: { value: "顏真卿" } });
+    fireEvent.change(inputs[2], { target: { value: "唐" } });
+    const selects = screen.getAllByRole("combobox");
+    fireEvent.change(selects[0], { target: { value: "kai" } });
+
     const genBtn = screen.getByRole("button", { name: /生成 AI 解析/ });
-    expect(genBtn).toBeDisabled();
+    expect(genBtn).not.toBeDisabled();
   });
 
-  it("shows hint that save is required before AI generation", async () => {
-    global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ models: [] }) }) as unknown as typeof fetch;
+  it("clicking generate POSTs to /api/admin/beitie/generate-ai when fields are filled", async () => {
+    const fetchSpy = buildFetchMap({
+      "generate-ai": { data: { models: [], sections: {
+        history: "h", biography: "b", style: "s", influence: "i", stories: "st", practice: "p",
+      }}},
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
     render(<BeitieFormPage />);
+
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
-    expect(screen.getByText(/請先儲存碑帖/)).toBeInTheDocument();
+    const inputs = screen.getAllByRole("textbox");
+    fireEvent.change(inputs[0], { target: { value: "多寶塔碑" } });
+    fireEvent.change(inputs[1], { target: { value: "顏真卿" } });
+    fireEvent.change(inputs[2], { target: { value: "唐" } });
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "kai" } });
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /生成 AI 解析/ })); });
+
+    await waitFor(() => {
+      const postCall = fetchSpy.mock.calls.find(
+        ([url, opts]: [string, RequestInit]) =>
+          url === "/api/admin/beitie/generate-ai" && opts?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.title).toBe("多寶塔碑");
+      expect(body.author).toBe("顏真卿");
+    });
+  });
+
+  it("fills in AI fields in the form after a successful generate", async () => {
+    const sections = {
+      history: "歷史文本", biography: "生平文本", style: "風格文本",
+      influence: "影響文本", stories: "故事文本", practice: "建議文本",
+    };
+    const fetchSpy = buildFetchMap({
+      "generate-ai": { data: { models: [], sections } },
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    render(<BeitieFormPage />);
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
+    const inputs = screen.getAllByRole("textbox");
+    fireEvent.change(inputs[0], { target: { value: "多寶塔碑" } });
+    fireEvent.change(inputs[1], { target: { value: "顏真卿" } });
+    fireEvent.change(inputs[2], { target: { value: "唐" } });
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "kai" } });
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /生成 AI 解析/ })); });
+
+    await waitFor(() => screen.getByDisplayValue("歷史文本"));
+    expect(screen.getByDisplayValue("生平文本")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("風格文本")).toBeInTheDocument();
   });
 });
 
-// ── 2. creation mode — NPM search ─────────────────────────────────────────────
+// ── 3. creation mode — NPM search ─────────────────────────────────────────────
 
 describe("creation mode — NPM search", () => {
   beforeEach(() => { mockId = "new"; });
 
   it("shows npm search input", () => {
-    global.fetch = jest.fn() as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
     expect(screen.getByPlaceholderText(/蘭亭、顏真卿/)).toBeInTheDocument();
   });
@@ -152,9 +223,7 @@ describe("creation mode — NPM search", () => {
     await userEvent.type(screen.getByPlaceholderText(/蘭亭、顏真卿/), "蘭亭");
 
     await waitFor(
-      () => expect(fetchSpy).toHaveBeenCalledWith(
-        expect.stringContaining("npm-lookup")
-      ),
+      () => expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining("npm-lookup")),
       { timeout: 1000 }
     );
   });
@@ -179,7 +248,6 @@ describe("creation mode — NPM search", () => {
     await act(async () => { fireEvent.click(screen.getByText("蘭亭集序")); });
 
     await waitFor(() => {
-      // Title field should now be visible and filled
       const titleInputs = screen.getAllByDisplayValue("蘭亭集序");
       expect(titleInputs.length).toBeGreaterThan(0);
     });
@@ -195,7 +263,11 @@ describe("creation mode — NPM search", () => {
 
     let resolveFetch!: (v: unknown) => void;
     const fetchSpy = jest.fn()
+      // model list fetch on mount
+      .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ models: [] }) })
+      // npm-lookup results
       .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ results }) })
+      // npm-fetch-pages hangs until we resolve it
       .mockImplementationOnce(() => new Promise((r) => { resolveFetch = r; }));
 
     global.fetch = fetchSpy as unknown as typeof fetch;
@@ -206,35 +278,24 @@ describe("creation mode — NPM search", () => {
     await act(async () => { fireEvent.click(screen.getByText("蘭亭集序")); });
     expect(screen.getByText(/正在抓取分頁圖片/)).toBeInTheDocument();
 
-    // Clean up the hanging promise
     await act(async () => {
       resolveFetch({ ok: true, status: 200, json: () => Promise.resolve({ pageUrls: [], imagePages: [] }) });
     });
   });
 });
 
-// ── 3. creation mode — form submission ────────────────────────────────────────
+// ── 4. creation mode — form submission ────────────────────────────────────────
 
 describe("creation mode — form submission", () => {
   beforeEach(() => { mockId = "new"; });
 
-  async function fillAndSubmit(fetchSpy: jest.Mock) {
-    global.fetch = fetchSpy as unknown as typeof fetch;
-    render(<BeitieFormPage />);
-
+  async function fillRequiredFields() {
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
-
-    // title, author, dynasty are the first three textbox inputs in the grid
     const inputs = screen.getAllByRole("textbox");
     fireEvent.change(inputs[0], { target: { value: "多寶塔碑" } });
     fireEvent.change(inputs[1], { target: { value: "顏真卿" } });
     fireEvent.change(inputs[2], { target: { value: "唐" } });
-
-    // Style select is the first combobox; the second is the Gemini model selector
-    const selects = screen.getAllByRole("combobox");
-    fireEvent.change(selects[0], { target: { value: "kai" } });
-
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "新增碑帖" })); });
+    fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "kai" } });
   }
 
   it("POSTs to /api/admin/beitie with required fields", async () => {
@@ -242,7 +303,11 @@ describe("creation mode — form submission", () => {
       "/api/admin/beitie": { data: { id: 99 } },
       "generate-ai": { data: { models: [] } },
     });
-    await fillAndSubmit(fetchSpy);
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    render(<BeitieFormPage />);
+    await fillRequiredFields();
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "新增碑帖" })); });
 
     await waitFor(() => {
       const postCall = fetchSpy.mock.calls.find(
@@ -257,21 +322,80 @@ describe("creation mode — form submission", () => {
     });
   });
 
-  it("calls router.replace with the new edit URL after creation", async () => {
+  it("calls window.history.replaceState with the new edit URL after creation", async () => {
     const fetchSpy = buildFetchMap({
       "/api/admin/beitie": { data: { id: 99 } },
       "generate-ai": { data: { models: [] } },
-      "/api/beitie/99": { data: { item: null } },
     });
-    await fillAndSubmit(fetchSpy);
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    render(<BeitieFormPage />);
+    await fillRequiredFields();
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "新增碑帖" })); });
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith("/admin/beitie/99/edit");
+      expect(window.history.replaceState).toHaveBeenCalledWith(
+        null, "", "/admin/beitie/99/edit"
+      );
+    });
+  });
+
+  it("does NOT call router.replace after creation", async () => {
+    const fetchSpy = buildFetchMap({
+      "/api/admin/beitie": { data: { id: 99 } },
+      "generate-ai": { data: { models: [] } },
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    render(<BeitieFormPage />);
+    await fillRequiredFields();
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "新增碑帖" })); });
+
+    // Give time for any async side effects
+    await waitFor(() => {
+      expect(window.history.replaceState).toHaveBeenCalled();
+    });
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
+  it("includes AI fields in the POST body when they are present on the form", async () => {
+    const sections = {
+      history: "AI歷史", biography: "AI生平", style: "AI風格",
+      influence: "AI影響", stories: "AI故事", practice: "AI建議",
+    };
+    // "generate-ai" must come before "/api/admin/beitie" — buildFetchMap uses
+    // substring matching, and the longer path is a substring of the shorter key.
+    const fetchSpy = buildFetchMap({
+      "generate-ai": { data: { models: [], sections } },
+      "/api/admin/beitie": { data: { id: 77 } },
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    render(<BeitieFormPage />);
+    await fillRequiredFields();
+
+    // Generate AI content first
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /生成 AI 解析/ })); });
+    await waitFor(() => screen.getByDisplayValue("AI歷史"));
+
+    // Now save the record
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "新增碑帖" })); });
+
+    await waitFor(() => {
+      const postCall = fetchSpy.mock.calls.find(
+        ([url, opts]: [string, RequestInit]) => url === "/api/admin/beitie" && opts?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.aiHistory).toBe("AI歷史");
+      expect(body.aiBiography).toBe("AI生平");
+      expect(body.aiStyle).toBe("AI風格");
     });
   });
 
   it("shows validation error when title is missing", async () => {
-    global.fetch = jest.fn() as unknown as typeof fetch;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "新增碑帖" })); });
@@ -279,7 +403,9 @@ describe("creation mode — form submission", () => {
   });
 
   it("does not call fetch when required fields are missing", async () => {
-    const fetchSpy = jest.fn();
+    const fetchSpy = jest.fn().mockResolvedValue({
+      ok: true, status: 200, json: () => Promise.resolve({ models: [] }),
+    });
     global.fetch = fetchSpy as unknown as typeof fetch;
     render(<BeitieFormPage />);
     await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
@@ -289,9 +415,32 @@ describe("creation mode — form submission", () => {
       expect.objectContaining({ method: "POST" })
     );
   });
+
+  it("儲存並上傳 D1 button for a new record creates the record then calls upload-d1 in one click", async () => {
+    const fetchSpy = buildFetchMap({
+      "/api/admin/beitie": { data: { id: 88 } },
+      "generate-ai": { data: { models: [] } },
+      "upload-d1": { data: { ok: true } },
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    render(<BeitieFormPage />);
+    await fillRequiredFields();
+
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "儲存並上傳 D1" })); });
+
+    await waitFor(() => {
+      const postCall = fetchSpy.mock.calls.find(
+        ([url, opts]: [string, RequestInit]) => url === "/api/admin/beitie" && opts?.method === "POST"
+      );
+      expect(postCall).toBeDefined();
+
+      const d1Call = fetchSpy.mock.calls.find(([url]: [string]) => url.includes("upload-d1"));
+      expect(d1Call).toBeDefined();
+    });
+  });
 });
 
-// ── 4. edit mode — loading & data fetch ───────────────────────────────────────
+// ── 5. edit mode — loading & data fetch ───────────────────────────────────────
 
 describe("edit mode (id=42) — loading and data fetch", () => {
   beforeEach(() => { mockId = "42"; });
@@ -356,7 +505,7 @@ describe("edit mode (id=42) — loading and data fetch", () => {
   });
 });
 
-// ── 5. edit mode — form submission (PATCH) ────────────────────────────────────
+// ── 6. edit mode — form submission (PATCH) ────────────────────────────────────
 
 describe("edit mode — PATCH on save", () => {
   beforeEach(() => { mockId = "42"; });
@@ -399,6 +548,7 @@ describe("edit mode — PATCH on save", () => {
       )).toBe(true);
     });
     expect(mockReplace).not.toHaveBeenCalled();
+    expect(window.history.replaceState).not.toHaveBeenCalled();
   });
 
   it("calls PATCH then upload-d1 when '儲存並上傳 D1' is clicked", async () => {
@@ -432,7 +582,7 @@ describe("edit mode — PATCH on save", () => {
     expect(mockPush).toHaveBeenCalledWith("/admin/beitie");
   });
 
-  it("back button in ← header navigates to /admin/beitie", async () => {
+  it("← header button navigates to /admin/beitie", async () => {
     global.fetch = buildFetchMap({
       "/api/beitie/42": { data: { item: SAMPLE_ITEM } },
       "generate-ai": { data: { models: [] } },
@@ -445,7 +595,7 @@ describe("edit mode — PATCH on save", () => {
   });
 });
 
-// ── 6. edit mode — AI generation ──────────────────────────────────────────────
+// ── 7. edit mode — AI generation ──────────────────────────────────────────────
 
 describe("edit mode — AI generation", () => {
   beforeEach(() => { mockId = "42"; });
@@ -484,7 +634,9 @@ describe("edit mode — AI generation", () => {
   it("shows success status after generation", async () => {
     const fetchSpy = buildFetchMap({
       "/api/beitie/42": { data: { item: SAMPLE_ITEM } },
-      "generate-ai": { data: { models: [], sections: { history: "x", biography: "x", style: "x", influence: "x", stories: "x", practice: "x" } } },
+      "generate-ai": { data: { models: [], sections: {
+        history: "x", biography: "x", style: "x", influence: "x", stories: "x", practice: "x",
+      }}},
     });
     global.fetch = fetchSpy as unknown as typeof fetch;
     render(<BeitieFormPage />);
@@ -540,7 +692,7 @@ describe("edit mode — AI generation", () => {
   });
 });
 
-// ── 7. edit mode — image management ──────────────────────────────────────────
+// ── 8. edit mode — image management ──────────────────────────────────────────
 
 describe("edit mode — image strip and cover selection", () => {
   beforeEach(() => { mockId = "42"; });
@@ -552,7 +704,7 @@ describe("edit mode — image strip and cover selection", () => {
     }) as unknown as typeof fetch;
     render(<BeitieFormPage />);
     await waitFor(() => screen.getByDisplayValue("蘭亭集序"));
-    // cover + 1 page = 2 images; alt="" makes them presentational so query via tag
+    // cover + 1 page = 2 images
     // eslint-disable-next-line testing-library/no-node-access
     const images = document.querySelectorAll("img");
     expect(images.length).toBeGreaterThanOrEqual(2);
@@ -569,10 +721,28 @@ describe("edit mode — image strip and cover selection", () => {
   });
 });
 
-// ── 8. live Gemini model list ─────────────────────────────────────────────────
+// ── 9. Gemini model list — source URL ─────────────────────────────────────────
 
-describe("edit mode — Gemini model list", () => {
+describe("Gemini model list — fetch URL", () => {
   beforeEach(() => { mockId = "42"; });
+
+  it("fetches model list from /api/admin/beitie/generate-ai (not an id-based URL)", async () => {
+    const fetchSpy = buildFetchMap({
+      "/api/beitie/42": { data: { item: SAMPLE_ITEM } },
+      "generate-ai": { data: { models: [{ id: "gemini-test-model", label: "Test Model" }] } },
+    });
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    render(<BeitieFormPage />);
+    await waitFor(() => screen.getByDisplayValue("蘭亭集序"));
+
+    const generateAiCall = fetchSpy.mock.calls.find(
+      ([url, opts]: [string, RequestInit | undefined]) =>
+        url === "/api/admin/beitie/generate-ai" && (!opts || opts.method === undefined || opts.method === "GET")
+    );
+    expect(generateAiCall).toBeDefined();
+    // Confirm it is NOT an id-specific URL like /api/admin/beitie/42/generate-ai
+    expect(generateAiCall![0]).not.toMatch(/\/\d+\/generate-ai/);
+  });
 
   it("populates model selector from live API response", async () => {
     const fetchSpy = buildFetchMap({
@@ -592,43 +762,7 @@ describe("edit mode — Gemini model list", () => {
     global.fetch = fetchSpy as unknown as typeof fetch;
     render(<BeitieFormPage />);
     await waitFor(() => screen.getByDisplayValue("蘭亭集序"));
-    // Hardcoded fallback includes Gemini 2.0 Flash
-    expect(screen.getByText(/Gemini 2\.0 Flash（預設）/)).toBeInTheDocument();
-  });
-});
-
-// ── 9. post-creation transition ───────────────────────────────────────────────
-
-describe("post-creation transition", () => {
-  beforeEach(() => { mockId = "new"; });
-
-  it("AI panel becomes active after creation (savedId set)", async () => {
-    // After POST, router.replace is called — simulate by checking that the
-    // generate button was disabled before save and the replace was called with correct URL.
-    const fetchSpy = buildFetchMap({
-      "/api/admin/beitie": { data: { id: 55 } },
-      "generate-ai": { data: { models: [] } },
-      "/api/beitie/55": { data: { item: { ...SAMPLE_ITEM, id: 55 } } },
-    });
-    global.fetch = fetchSpy as unknown as typeof fetch;
-    render(<BeitieFormPage />);
-
-    // Switch to manual tab and fill form
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "手動新增" })); });
-
-    const inputs = screen.getAllByRole("textbox");
-    await userEvent.clear(inputs[0]); await userEvent.type(inputs[0], "新碑帖");
-    await userEvent.clear(inputs[1]); await userEvent.type(inputs[1], "作者");
-    await userEvent.clear(inputs[2]); await userEvent.type(inputs[2], "唐");
-    await userEvent.selectOptions(screen.getByRole("combobox"), "kai");
-
-    // Confirm AI generate button is disabled before save
-    expect(screen.getByRole("button", { name: /生成 AI 解析/ })).toBeDisabled();
-
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "新增碑帖" })); });
-
-    await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith("/admin/beitie/55/edit");
-    });
+    // The hardcoded fallback has "Gemini 3 Flash Preview（預設）" as the default label
+    expect(screen.getByText(/Gemini 3 Flash Preview（預設）/)).toBeInTheDocument();
   });
 });

@@ -189,6 +189,66 @@ describe("POST /api/admin/beitie", () => {
     const res = await adminPOST(req);
     expect(res.status).toBe(400);
   });
+
+  it("passes AI fields through to insertBeitie when provided", async () => {
+    await adminPOST(
+      makeRequest("/api/admin/beitie", jsonBody({
+        title: "多寶塔碑",
+        author: "顏真卿",
+        dynasty: "唐",
+        style: "楷書",
+        styleSlug: "kai",
+        aiHistory: "碑石歷史",
+        aiBiography: "顏真卿生平",
+        aiStyle: "楷書風格",
+        aiInfluence: "顏體影響",
+        aiStories: "書寫典故",
+        aiPractice: "臨摹建議",
+      }))
+    );
+    expect(mockInsertBeitie).toHaveBeenCalledWith(
+      expect.objectContaining({
+        aiHistory: "碑石歷史",
+        aiBiography: "顏真卿生平",
+        aiStyle: "楷書風格",
+        aiInfluence: "顏體影響",
+        aiStories: "書寫典故",
+        aiPractice: "臨摹建議",
+      })
+    );
+  });
+
+  it("sets aiGeneratedAt to a non-null ISO string when at least one AI field is present", async () => {
+    await adminPOST(
+      makeRequest("/api/admin/beitie", jsonBody({
+        title: "多寶塔碑",
+        author: "顏真卿",
+        dynasty: "唐",
+        style: "楷書",
+        styleSlug: "kai",
+        aiHistory: "碑石歷史",
+      }))
+    );
+    const call = mockInsertBeitie.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.aiGeneratedAt).not.toBeNull();
+    expect(typeof call.aiGeneratedAt).toBe("string");
+    // Must be a valid ISO 8601 date string
+    expect(new Date(call.aiGeneratedAt as string).toISOString()).toBe(call.aiGeneratedAt);
+  });
+
+  it("sets aiGeneratedAt to null when no AI fields are provided", async () => {
+    await adminPOST(
+      makeRequest("/api/admin/beitie", jsonBody({
+        title: "多寶塔碑",
+        author: "顏真卿",
+        dynasty: "唐",
+        style: "楷書",
+        styleSlug: "kai",
+      }))
+    );
+    const call = mockInsertBeitie.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.aiGeneratedAt).toBeNull();
+  });
 });
 
 // ── PATCH /api/admin/beitie/[id] ─────────────────────────────────────────────

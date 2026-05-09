@@ -423,7 +423,7 @@ export default function BeitieFormPage() {
         id = String(data.id);
         justCreatedRef.current = true;
         setSavedId(id);
-        router.replace(`/admin/beitie/${id}/edit`);
+        window.history.replaceState(null, "", `/admin/beitie/${id}/edit`);
       } else {
         // Update existing record
         const res = await fetch(`/api/admin/beitie/${id}`, {
