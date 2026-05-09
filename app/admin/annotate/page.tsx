@@ -267,6 +267,7 @@ function AnnotateInner() {
 
   const runProcessing = useCallback(async (forceSplit = false, noCrop = false, imageOnly = false) => {
     if (!identifier) return;
+    const page = currentPageRef.current;
     pushHistory();
     setProcessing(true);
     setProcessError(null);
@@ -276,24 +277,49 @@ function AnnotateInner() {
       const res = await fetch(`/api/admin/npm/${encodeURIComponent(identifier)}/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ forceSplit, closeKernel, splitRatio, noCrop, imageOnly }),
+        body: JSON.stringify({ forceSplit, closeKernel, splitRatio, noCrop, imageOnly, page }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "processing failed");
       if (data.imageOnly) {
-        setImageSize(data.imageSize);
-        setBoxes([]);
-        setShiwenChars([]);
+        // Clear only the current page's boxes (coords are relative to this page's image)
+        if (page === 0) setImageSize(data.imageSize);
+        setPageSizes(prev => ({ ...prev, [page]: data.imageSize }));
+        setBoxes(prev => prev.filter(b => b.page !== page));
         setImgVersion(v => v + 1);
       } else if (data.boxes) {
-        applyBoxData(data.boxes, shiwenInput);
+        // Merge: replace boxes for this page, keep all other pages
+        const existingShi = shiwenCharsRef.current;
+        const shiwen = existingShi.length > 0 ? existingShi : (data.boxes.shiwen || []);
+        if (existingShi.length === 0 && (data.boxes.shiwen || []).length > 0) {
+          setShiwenInput(data.boxes.shiwen.join(""));
+          setShiwenChars(data.boxes.shiwen);
+        }
+        const newPageBoxes: Box[] = (data.boxes.boxes || []).map((b: any) => ({
+          id: makeId(),
+          x: b.x, y: b.y, w: b.w, h: b.h,
+          confidence: b.confidence,
+          source: b.source as Box["source"],
+          char: "",
+          page,
+        }));
+        if (page === 0) setImageSize(data.boxes.imageSize);
+        setPageSizes(prev => ({ ...prev, [page]: data.boxes.imageSize }));
+        setBoxes(prev => {
+          const otherBoxes = prev.filter(b => b.page !== page);
+          const allBoxes = [...otherBoxes, ...newPageBoxes];
+          const ordered = sortedGlobalOrder(allBoxes);
+          const charMap = new Map(ordered.map((b, i) => [b.id, shiwen[i] || ""]));
+          return allBoxes.map(b => ({ ...b, char: charMap.get(b.id) || "" }));
+        });
+        setImgVersion(v => v + 1);
       }
     } catch (e: any) {
       setProcessError(e.message);
     } finally {
       setProcessing(false);
     }
-  }, [identifier, applyBoxData, closeKernel, splitRatio, shiwenInput]);
+  }, [identifier, closeKernel, splitRatio]);
 
   const handleImageLoad = useCallback(() => {
     if (!imgRef.current) return;

@@ -20,14 +20,16 @@ function loadIndex(): Record<string, any> {
   return JSON.parse(fs.readFileSync(INDEX_FILE, "utf-8"));
 }
 
-async function ensureImageDownloaded(identifier: string): Promise<boolean> {
+async function ensureImageDownloaded(identifier: string, page = 0): Promise<boolean> {
   const safe = safeFilename(identifier);
-  const dest = path.resolve(RAW_DIR, `${safe}.jpg`);
+  const filename = page > 0 ? `${safe}_p${page}.jpg` : `${safe}.jpg`;
+  const dest = path.resolve(RAW_DIR, filename);
   if (!dest.startsWith(RAW_DIR + path.sep)) return false;
   if (fs.existsSync(dest)) return true;
 
   const index = loadIndex();
-  const imageUrl = index[identifier]?.imageUrl;
+  const entry = index[identifier];
+  const imageUrl = page > 0 ? entry?.imagePages?.[page] : entry?.imageUrl;
   if (!isAllowedUpstreamUrl(imageUrl)) return false;
 
   try {
@@ -60,6 +62,7 @@ export async function POST(
   let splitRatio = 1.5;
   let noCrop = false;
   let imageOnly = false;
+  let page = 0;
   try {
     const body = await req.json();
     forceSplit = body?.forceSplit === true;
@@ -67,6 +70,7 @@ export async function POST(
     imageOnly = body?.imageOnly === true;
     if (typeof body?.closeKernel === "number") closeKernel = Math.round(Math.min(15, Math.max(1, body.closeKernel)));
     if (typeof body?.splitRatio === "number") splitRatio = Math.min(2.5, Math.max(1.1, body.splitRatio));
+    if (typeof body?.page === "number") page = Math.max(0, Math.min(999, Math.round(body.page)));
   } catch {
     // no body or not JSON — fine
   }
@@ -76,7 +80,7 @@ export async function POST(
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  const downloaded = await ensureImageDownloaded(identifier);
+  const downloaded = await ensureImageDownloaded(identifier, page);
   if (!downloaded) {
     return NextResponse.json({ error: "image download failed" }, { status: 502 });
   }
@@ -88,6 +92,7 @@ export async function POST(
   if (forceSplit) pyArgs.push("--force-split");
   if (noCrop) pyArgs.push("--no-crop");
   if (imageOnly) pyArgs.push("--image-only");
+  if (page > 0) pyArgs.push("--page", String(page));
 
   const result = spawnSync(
     PYTHON,
@@ -102,9 +107,10 @@ export async function POST(
 
   const safe = safeFilename(identifier);
   const processedDir = path.join(DATA_DIR, "processed");
+  const safeWithPage = page > 0 ? `${safe}_p${page}` : safe;
 
   if (imageOnly) {
-    const imageonlyFile = path.resolve(processedDir, safe, "imageonly.json");
+    const imageonlyFile = path.resolve(processedDir, safeWithPage, "imageonly.json");
     if (!imageonlyFile.startsWith(processedDir + path.sep)) {
       return NextResponse.json({ error: "invalid identifier" }, { status: 400 });
     }
@@ -115,7 +121,7 @@ export async function POST(
     return NextResponse.json({ ok: true, imageOnly: true, imageSize: data.imageSize });
   }
 
-  const boxesFile = path.resolve(processedDir, safe, "boxes.json");
+  const boxesFile = path.resolve(processedDir, safeWithPage, "boxes.json");
   if (!boxesFile.startsWith(processedDir + path.sep)) {
     return NextResponse.json({ error: "invalid identifier" }, { status: 400 });
   }

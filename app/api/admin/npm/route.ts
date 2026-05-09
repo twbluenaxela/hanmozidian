@@ -102,7 +102,14 @@ export async function PATCH(req: NextRequest) {
     const entry = index[identifier];
     if (!entry) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-    if (status !== undefined) entry.status = status;
+    if (status !== undefined) {
+      entry.status = status;
+      // Re-completing an already-uploaded work means the annotation changed — mark
+      // it for re-export so export.py picks it up again without needing --force.
+      if (status === "done" && entry.uploaded) {
+        entry.uploaded = false;
+      }
+    }
     if (annotationDraft !== undefined) entry.annotationDraft = annotationDraft;
     if (shiwen !== undefined) entry.shiwen = shiwen;
     if (styleSlug !== undefined) entry.styleSlug = styleSlug;

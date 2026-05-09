@@ -510,7 +510,7 @@ def save_debug_image(
 
 def process_work(identifier: str, force_split: bool = False, debug: bool = False,
                  close_kernel: int = 6, split_ratio: float = 1.5, no_crop: bool = False,
-                 image_only: bool = False):
+                 image_only: bool = False, page: int = 0):
     index = load_index()
     entry = index.get(identifier)
     if not entry:
@@ -518,15 +518,24 @@ def process_work(identifier: str, force_split: bool = False, debug: bool = False
         sys.exit(1)
 
     safe = safe_filename(identifier)
-    img_path = next(
-        (p for p in [RAW_DIR / f"{safe}.jpg", RAW_DIR / f"{identifier}.jpg"] if p.exists()),
-        None,
-    )
+    if page > 0:
+        img_path = next(
+            (p for p in [RAW_DIR / f"{safe}_p{page}.jpg", RAW_DIR / f"{identifier}_p{page}.jpg"] if p.exists()),
+            None,
+        )
+        out_dir = PROCESSED_DIR / f"{safe}_p{page}"
+    else:
+        img_path = next(
+            (p for p in [RAW_DIR / f"{safe}.jpg", RAW_DIR / f"{identifier}.jpg"] if p.exists()),
+            None,
+        )
+        out_dir = PROCESSED_DIR / safe
+
     if not img_path:
-        print(f"ERROR: Image not found in {RAW_DIR}. Run ingest.py --id first.")
+        page_desc = f"page {page}" if page > 0 else "default page"
+        print(f"ERROR: Image not found in {RAW_DIR} for {page_desc}. View the page in the UI first to cache it.")
         sys.exit(1)
 
-    out_dir = PROCESSED_DIR / safe
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Processing: {entry['name']}")
@@ -662,10 +671,13 @@ def main():
         help="Skip horizontal crop (isolate_text_region) — use when the auto-crop cuts off characters.")
     parser.add_argument("--image-only", action="store_true",
         help="Regenerate clean.jpg only, skip detection. Combine with --no-crop to undo a bad crop.")
+    parser.add_argument("--page", type=int, default=0, metavar="N",
+        help="Page index (0-based). 0 = raw/<safe>.jpg; N > 0 = raw/<safe>_pN.jpg. "
+             "The page image must already be cached (open it in the UI first).")
     args = parser.parse_args()
     process_work(args.id, force_split=args.force_split, debug=args.debug,
                  close_kernel=args.close_kernel, split_ratio=args.split_ratio,
-                 no_crop=args.no_crop, image_only=args.image_only)
+                 no_crop=args.no_crop, image_only=args.image_only, page=args.page)
 
 
 if __name__ == "__main__":
