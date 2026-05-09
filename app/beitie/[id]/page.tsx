@@ -196,6 +196,7 @@ export default function BeitieDetailPage() {
   const [activeImg, setActiveImg] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const thumbnailStripRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -217,6 +218,36 @@ export default function BeitieDetailPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [item, lightboxOpen]);
+
+  // Swipe left/right on hero image to navigate
+  useEffect(() => {
+    const el = heroRef.current;
+    if (!el || !item) return;
+    const allImages = [item.coverImage, ...item.pages].filter(Boolean) as string[];
+    if (allImages.length <= 1) return;
+
+    let startX = 0;
+    let startY = 0;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      if (lightboxOpen || e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy)) return;
+      if (dx < 0) setActiveImg((i) => Math.min(allImages.length - 1, i + 1));
+      else setActiveImg((i) => Math.max(0, i - 1));
+    };
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
   }, [item, lightboxOpen]);
 
   // Drag-to-scroll on thumbnail strip
@@ -333,7 +364,7 @@ export default function BeitieDetailPage() {
           </div>
 
           {/* Hero image */}
-          <div className="relative bg-[#060606] border-y border-[var(--border)] flex items-center justify-center group" style={{ minHeight: 240 }}>
+          <div ref={heroRef} className="relative bg-[#060606] border-y border-[var(--border)] flex items-center justify-center group" style={{ minHeight: 240 }}>
             {allImages.length > 0 ? (
               <>
                 <img

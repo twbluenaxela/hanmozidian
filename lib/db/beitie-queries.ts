@@ -126,6 +126,13 @@ export async function insertBeitie(data: {
   shiwen?: string | null;
   sourceCredit?: string | null;
   sourceUrl?: string | null;
+  aiHistory?: string | null;
+  aiBiography?: string | null;
+  aiStyle?: string | null;
+  aiInfluence?: string | null;
+  aiStories?: string | null;
+  aiPractice?: string | null;
+  aiGeneratedAt?: string | null;
 }): Promise<number> {
   ensureD1Configured();
   const normalizedStyleSlug = normalizeStyleSlug(data.styleSlug);
@@ -133,8 +140,9 @@ export async function insertBeitie(data: {
     `INSERT INTO beitie
       (title, author, dynasty, style, style_slug, year_label, medium,
        char_count, summary, tags, cover_image, pages_json,
-       shiwen, source_credit, source_url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       shiwen, source_credit, source_url,
+       ai_history, ai_biography, ai_style, ai_influence, ai_stories, ai_practice, ai_generated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     RETURNING id`,
     [
       data.title,
@@ -152,6 +160,13 @@ export async function insertBeitie(data: {
       data.shiwen ?? null,
       data.sourceCredit ?? null,
       data.sourceUrl ?? null,
+      data.aiHistory ?? null,
+      data.aiBiography ?? null,
+      data.aiStyle ?? null,
+      data.aiInfluence ?? null,
+      data.aiStories ?? null,
+      data.aiPractice ?? null,
+      data.aiGeneratedAt ?? null,
     ]
   );
   const inserted = rows[0]?.id;

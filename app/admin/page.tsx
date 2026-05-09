@@ -48,6 +48,9 @@ export default function AdminPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDeploy, setPendingDeploy] = useState(0);
+  const [deploying, setDeploying] = useState(false);
+  const [deployDone, setDeployDone] = useState(false);
 
   // Debounce so search doesn't fire a request on every keystroke.
   useEffect(() => {
@@ -83,11 +86,60 @@ export default function AdminPage() {
     return () => controller.abort();
   }, [activeStatus, activeCategory, debouncedQuery]);
 
+  useEffect(() => {
+    fetch("/api/admin/deploy-status")
+      .then(r => r.json())
+      .then(d => setPendingDeploy(d.pending || 0))
+      .catch(() => {});
+  }, []);
+
+  const handleDeploy = async () => {
+    setDeploying(true);
+    setDeployDone(false);
+    await fetch("/api/admin/deploy", { method: "POST" });
+    // Poll until deploy.sh finishes (it writes the timestamp on completion)
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch("/api/admin/deploy-status");
+        const d = await r.json();
+        if (d.pending === 0) {
+          clearInterval(poll);
+          setPendingDeploy(0);
+          setDeploying(false);
+          setDeployDone(true);
+          setTimeout(() => setDeployDone(false), 5000);
+        }
+      } catch { /* keep polling */ }
+    }, 15_000);
+  };
+
   const totalAll = Object.values(statusCounts).reduce((a, b) => a + b, 0);
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] p-6">
       <div className="max-w-5xl mx-auto space-y-6">
+
+        {/* Deploy reminder */}
+        {deployDone && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
+            ✓ 部署完成，變更已上線。
+          </div>
+        )}
+        {(pendingDeploy > 0 || deploying) && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-sm">
+            <span>
+              {deploying
+                ? "部署中，請稍候…"
+                : `${pendingDeploy} 個作品已匯出但尚未部署。`}
+            </span>
+            <button
+              onClick={handleDeploy}
+              disabled={deploying}
+              className="shrink-0 px-3 py-1 rounded-lg border border-yellow-500/50 text-yellow-400 text-xs font-bold hover:bg-yellow-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {deploying ? "部署中…" : "立即部署"}
+            </button>
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex items-center justify-between">

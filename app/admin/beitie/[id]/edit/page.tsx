@@ -1,7 +1,33 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+
+type ToastItem = { id: number; type: "success" | "error" | "info"; msg: string };
+
+function Toast({ toasts, onDismiss }: { toasts: ToastItem[]; onDismiss: (id: number) => void }) {
+  if (!toasts.length) return null;
+  return (
+    <div className="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          onClick={() => onDismiss(t.id)}
+          className="pointer-events-auto flex items-start gap-2.5 px-4 py-3 rounded-xl text-sm shadow-lg cursor-pointer"
+          style={{
+            background: t.type === "success" ? "rgba(30,60,40,0.97)" : t.type === "error" ? "rgba(60,20,20,0.97)" : "rgba(30,30,40,0.97)",
+            border: `1px solid ${t.type === "success" ? "rgba(100,220,160,0.35)" : t.type === "error" ? "rgba(220,80,80,0.35)" : "rgba(212,168,83,0.3)"}`,
+            color: t.type === "success" ? "#64dca0" : t.type === "error" ? "#f87171" : "var(--accent)",
+            minWidth: "220px", maxWidth: "340px",
+          }}
+        >
+          <span className="shrink-0 mt-px">{t.type === "success" ? "✓" : t.type === "error" ? "✕" : "✦"}</span>
+          <span>{t.msg}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const STYLE_OPTIONS = [
   { slug: "jinwen", label: "金文" },
@@ -87,12 +113,12 @@ const AI_FIELDS: { key: keyof FormState; label: string }[] = [
 const GEMINI_MODELS = [
   { id: "gemini-3.1-pro-preview",         label: "Gemini 3.1 Pro Preview" },
   { id: "gemini-3-pro-preview",           label: "Gemini 3 Pro Preview" },
-  { id: "gemini-3-flash-preview",         label: "Gemini 3 Flash Preview" },
+  { id: "gemini-3-flash-preview",         label: "Gemini 3 Flash Preview（預設）" },
   { id: "gemini-3.1-flash-lite-preview",  label: "Gemini 3.1 Flash-Lite Preview" },
   { id: "gemini-pro-latest",              label: "Gemini Pro Latest" },
   { id: "gemini-flash-latest",            label: "Gemini Flash Latest" },
   { id: "gemini-flash-lite-latest",       label: "Gemini Flash-Lite Latest" },
-  { id: "gemini-2.0-flash",               label: "Gemini 2.0 Flash（預設）" },
+  { id: "gemini-2.0-flash",               label: "Gemini 2.0 Flash" },
   { id: "gemini-2.5-flash",               label: "Gemini 2.5 Flash" },
   { id: "gemini-2.5-flash-lite",          label: "Gemini 2.5 Flash-Lite" },
   { id: "gemini-2.5-pro",                 label: "Gemini 2.5 Pro" },
@@ -113,14 +139,22 @@ export default function BeitieFormPage() {
 
   // After creation this holds the persisted numeric ID
   const [savedId, setSavedId] = useState<string | null>(isNew ? null : rawId);
+  // True after we just created the record — suppresses the load-from-DB effect
+  const justCreatedRef = useRef(false);
 
   const [form, setForm] = useState<FormState | null>(isNew ? EMPTY_FORM : null);
   const [loading, setLoading] = useState(!isNew);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingD1, setUploadingD1] = useState(false);
-  const [error, setError] = useState("");
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
+
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastCounterRef = useRef(0);
+  const showToast = useCallback((type: ToastItem["type"], msg: string, duration = 4000) => {
+    const id = ++toastCounterRef.current;
+    setToasts((prev) => [...prev, { id, type, msg }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), duration);
+  }, []);
   const [uploadingPages, setUploadingPages] = useState(false);
   const [coverIdx, setCoverIdx] = useState(0);
 
@@ -134,15 +168,16 @@ export default function BeitieFormPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // AI generation
-  const [geminiModel, setGeminiModel] = useState("gemini-2.5-flash");
+  const [geminiModel, setGeminiModel] = useState("gemini-3-flash-preview");
   const [geminiModels, setGeminiModels] = useState(GEMINI_MODELS);
   const [generating, setGenerating] = useState(false);
   const [genStatus, setGenStatus] = useState<{ type: "success" | "rate_limit" | "daily_quota" | "error"; msg: string } | null>(null);
   const [retryCountdown, setRetryCountdown] = useState<number | null>(null);
 
-  // Load existing record in edit mode
+  // Load existing record in edit mode (skip if we just created it — form state is already correct)
   useEffect(() => {
     if (!savedId) return;
+    if (justCreatedRef.current) { justCreatedRef.current = false; return; }
     setLoading(true);
     fetch(`/api/beitie/${savedId}`)
       .then((r) => r.json())
@@ -178,10 +213,9 @@ export default function BeitieFormPage() {
       .catch(() => setLoading(false));
   }, [savedId]);
 
-  // Fetch live Gemini model list once we have an ID
+  // Fetch live Gemini model list on mount
   useEffect(() => {
-    if (!savedId) return;
-    fetch(`/api/admin/beitie/${savedId}/generate-ai`)
+    fetch("/api/admin/beitie/generate-ai")
       .then((r) => r.json())
       .then((d) => {
         const models = Array.isArray(d.models) ? d.models : [];
@@ -190,7 +224,7 @@ export default function BeitieFormPage() {
         setGeminiModel((prev) => (models.some((m: { id: string }) => m.id === prev) ? prev : models[0].id));
       })
       .catch(() => { /* keep fallback list */ });
-  }, [savedId]);
+  }, []);
 
   // Retry countdown for rate-limit
   useEffect(() => {
@@ -273,7 +307,7 @@ export default function BeitieFormPage() {
       if (field === "cover") { setField("coverImage", urls[0] ?? ""); setCoverIdx(0); }
       else setForm((p) => p ? { ...p, pages: [...p.pages, ...urls] } : p);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload error");
+      showToast("error", e instanceof Error ? e.message : "Upload error");
     } finally {
       if (field === "cover") setUploadingCover(false);
       else setUploadingPages(false);
@@ -291,14 +325,22 @@ export default function BeitieFormPage() {
   }
 
   async function handleGenerate() {
-    if (!form || !savedId) return;
+    if (!form) return;
+    if (!form.title || !form.author || !form.dynasty || !form.style || !form.styleSlug) {
+      showToast("error", "請先填寫標題、作者、朝代、書體，才能生成 AI 解析");
+      return;
+    }
     setGenerating(true);
     setGenStatus(null);
     try {
-      const res = await fetch(`/api/admin/beitie/${savedId}/generate-ai`, {
+      const res = await fetch("/api/admin/beitie/generate-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: geminiModel }),
+        body: JSON.stringify({
+          title: form.title, author: form.author, dynasty: form.dynasty,
+          style: form.style, yearLabel: form.yearLabel || null,
+          summary: form.summary || null, model: geminiModel,
+        }),
       });
       const data = await res.json();
       if (res.status === 429) {
@@ -336,13 +378,12 @@ export default function BeitieFormPage() {
   async function handleSubmit(uploadToD1 = false) {
     if (!form) return;
     if (!form.title || !form.author || !form.dynasty || !form.style || !form.styleSlug) {
-      setError("標題、作者、朝代、書體為必填");
+      showToast("error", "標題、作者、朝代、書體為必填");
       return;
     }
     setSubmitting(true);
-    setError("");
-    setSaveSuccess(false);
 
+    const hasAi = [form.aiHistory, form.aiBiography, form.aiStyle, form.aiInfluence, form.aiStories, form.aiPractice].some(Boolean);
     const body = {
       title: form.title,
       author: form.author,
@@ -359,10 +400,18 @@ export default function BeitieFormPage() {
       sourceUrl: form.sourceUrl || null,
       coverImage: allImages[coverIdx] || null,
       pages: allImages.filter((_, i) => i !== coverIdx),
+      aiHistory: form.aiHistory || null,
+      aiBiography: form.aiBiography || null,
+      aiStyle: form.aiStyle || null,
+      aiInfluence: form.aiInfluence || null,
+      aiStories: form.aiStories || null,
+      aiPractice: form.aiPractice || null,
+      aiGeneratedAt: hasAi ? new Date().toISOString() : null,
     };
 
     try {
-      if (!savedId) {
+      let id = savedId;
+      if (!id) {
         // Create new record
         const res = await fetch("/api/admin/beitie", {
           method: "POST",
@@ -371,43 +420,30 @@ export default function BeitieFormPage() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Failed");
-        const newId = String(data.id);
-        setSavedId(newId);
-        router.replace(`/admin/beitie/${newId}/edit`);
-        setSaveSuccess(true);
+        id = String(data.id);
+        justCreatedRef.current = true;
+        setSavedId(id);
+        router.replace(`/admin/beitie/${id}/edit`);
       } else {
         // Update existing record
-        const aiGeneratedAt = [form.aiHistory, form.aiBiography, form.aiStyle, form.aiInfluence, form.aiStories, form.aiPractice].some(Boolean)
-          ? new Date().toISOString()
-          : null;
-        const res = await fetch(`/api/admin/beitie/${savedId}`, {
+        const res = await fetch(`/api/admin/beitie/${id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...body,
-            aiHistory: form.aiHistory || null,
-            aiBiography: form.aiBiography || null,
-            aiStyle: form.aiStyle || null,
-            aiInfluence: form.aiInfluence || null,
-            aiStories: form.aiStories || null,
-            aiPractice: form.aiPractice || null,
-            aiGeneratedAt,
-          }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) throw new Error((await res.json()).error ?? "Failed");
-
-        if (uploadToD1) {
-          setUploadingD1(true);
-          const upRes = await fetch(`/api/admin/beitie/${savedId}/upload-d1`, { method: "POST" });
-          const upData = await upRes.json();
-          if (!upRes.ok) throw new Error(upData.error ?? "Upload to D1 failed");
-        }
-
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
       }
+
+      if (uploadToD1) {
+        setUploadingD1(true);
+        const upRes = await fetch(`/api/admin/beitie/${id}/upload-d1`, { method: "POST" });
+        const upData = await upRes.json();
+        if (!upRes.ok) throw new Error(upData.error ?? "Upload to D1 failed");
+      }
+
+      showToast("success", uploadToD1 ? "儲存並上傳 D1 成功" : savedId ? "變更已儲存" : "碑帖已新增");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Submit error");
+      showToast("error", e instanceof Error ? e.message : "Submit error");
     } finally {
       setSubmitting(false);
       setUploadingD1(false);
@@ -425,6 +461,7 @@ export default function BeitieFormPage() {
   const allImages = [form.coverImage, ...form.pages].filter(Boolean) as string[];
 
   return (
+    <>
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)] p-6 pb-24">
       <button
         onClick={() => router.push("/admin/beitie")}
@@ -614,15 +651,14 @@ export default function BeitieFormPage() {
                 <select
                   value={geminiModel}
                   onChange={(e) => { setGeminiModel(e.target.value); setRetryCountdown(null); setGenStatus(null); }}
-                  disabled={generating || !savedId}
+                  disabled={generating}
                   className="text-xs bg-[var(--background)] border border-[var(--border)] rounded-lg px-2 py-1.5 text-[var(--foreground)] focus:outline-none focus:border-[var(--accent)] disabled:opacity-50"
                 >
                   {geminiModels.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
                 </select>
                 <button
                   onClick={handleGenerate}
-                  disabled={generating || !savedId || (retryCountdown !== null && retryCountdown > 0)}
-                  title={!savedId ? "請先儲存碑帖後再生成 AI 解析" : undefined}
+                  disabled={generating || (retryCountdown !== null && retryCountdown > 0)}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
                   style={{ background: "rgba(212,168,83,0.15)", color: "var(--accent)", border: "1px solid rgba(212,168,83,0.3)" }}
                 >
@@ -635,10 +671,6 @@ export default function BeitieFormPage() {
                 </button>
               </div>
             </div>
-
-            {!savedId && (
-              <p className="text-xs text-[var(--muted)] mb-4">請先儲存碑帖，即可生成 AI 解析。</p>
-            )}
 
             {genStatus && (
               <div className={`mb-4 px-3 py-2.5 rounded-lg text-sm flex items-start gap-2 ${
@@ -678,16 +710,6 @@ export default function BeitieFormPage() {
           </div>
         )}
 
-        {error && (
-          <p className="text-sm text-red-400 bg-red-900/10 border border-red-900/30 rounded-lg px-3 py-2">{error}</p>
-        )}
-
-        {saveSuccess && !savedId && (
-          <p className="text-sm text-green-400 bg-green-900/10 border border-green-900/30 rounded-lg px-3 py-2">
-            碑帖已儲存！現在可以生成 AI 解析。
-          </p>
-        )}
-
         {(savedId || tab === "manual" || selectedNpm) && (
           <div className="flex gap-3 pt-2 flex-wrap">
             <button
@@ -697,15 +719,13 @@ export default function BeitieFormPage() {
             >
               {submitting ? "儲存中…" : savedId ? "儲存變更" : "新增碑帖"}
             </button>
-            {savedId && (
-              <button
-                onClick={() => handleSubmit(true)}
-                disabled={submitting || uploadingD1}
-                className="px-4 py-2 rounded-lg border border-[var(--accent)] text-sm text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors disabled:opacity-50"
-              >
-                {submitting || uploadingD1 ? "上傳中…" : "儲存並上傳 D1"}
-              </button>
-            )}
+            <button
+              onClick={() => handleSubmit(true)}
+              disabled={submitting || uploadingD1}
+              className="px-4 py-2 rounded-lg border border-[var(--accent)] text-sm text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors disabled:opacity-50"
+            >
+              {submitting || uploadingD1 ? "上傳中…" : "儲存並上傳 D1"}
+            </button>
             <button
               onClick={() => router.push("/admin/beitie")}
               className="px-4 py-2 rounded-lg border border-[var(--border)] text-sm text-[var(--muted)] hover:text-[var(--foreground)] transition-colors"
@@ -716,5 +736,8 @@ export default function BeitieFormPage() {
         )}
       </div>
     </div>
+
+    <Toast toasts={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))} />
+    </>
   );
 }

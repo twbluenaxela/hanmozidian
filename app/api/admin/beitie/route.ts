@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "title, author, dynasty, style, styleSlug are required" }, { status: 400 });
   }
 
+  const hasAi = [body.aiHistory, body.aiBiography, body.aiStyle, body.aiInfluence, body.aiStories, body.aiPractice].some(Boolean);
   const id = await insertBeitie({
     title: title as string,
     author: author as string,
@@ -35,6 +36,13 @@ export async function POST(request: NextRequest) {
     shiwen: (body.shiwen as string) ?? null,
     sourceCredit: (body.sourceCredit as string) ?? null,
     sourceUrl: (body.sourceUrl as string) ?? null,
+    aiHistory: (body.aiHistory as string) ?? null,
+    aiBiography: (body.aiBiography as string) ?? null,
+    aiStyle: (body.aiStyle as string) ?? null,
+    aiInfluence: (body.aiInfluence as string) ?? null,
+    aiStories: (body.aiStories as string) ?? null,
+    aiPractice: (body.aiPractice as string) ?? null,
+    aiGeneratedAt: hasAi ? new Date().toISOString() : null,
   });
 
   return NextResponse.json({ id });
