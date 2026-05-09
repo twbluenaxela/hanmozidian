@@ -200,9 +200,12 @@ const imageUrl = resolveImageUrl(image.imagePath);
 
 關鍵重點：
 - 標注資料儲存於 `pipeline/data/works_index.json`（**不是** SQLite DB）
-- 多頁捲軸需先執行 `python pipeline/fetch_pages.py` 才能抓取所有頁面 URL
+- 多頁捲軸需先執行 `python pipeline/fetch_pages.py` 才能抓取所有頁面 URL（或在 UI 開啟作品時自動執行）
 - Box 的字元是按**繪製順序**（非空間位置）分配的
 - `annotationDraft` 在 JSON 中是雙重編碼的字串
+- **偵測字框**（"偵測"按鈕）只針對當前頁面執行，結果合併進該頁的框，不影響其他頁面
+- `PATCH /api/admin/npm` 設定 `status: "done"` 時，若作品已 `uploaded: true`，會自動重設為 `uploaded: false`，確保重新標注後能正常匯出
+- `pipeline/` 目錄在 `.gitignore` 中，需用 `git add -f` 強制追蹤指令稿檔案
 
 ## 重要提醒
 

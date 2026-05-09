@@ -171,6 +171,7 @@ python pipeline/process.py --id <identifier>
 **Additional `process.py` flags:**
 - `--no-crop` — skips `isolate_text_region()`. Use when auto-crop cuts off edge characters.
 - `--image-only` — regenerates `clean.jpg`/`binary.jpg` and writes `imageonly.json` (imageSize only), then exits without running detection. Combine with `--no-crop` to undo a bad crop without losing existing box annotations. Output goes to `processed/<safe>/imageonly.json`, never overwrites `boxes.json`.
+- `--page N` — process a specific page instead of page 0. Page N reads `raw/<safe>_pN.jpg` and writes to `processed/<safe>_pN/`. The page image must be cached locally first (the UI downloads it on first view). Useful when page 0 is a low-res thumbnail but a later page is the full-resolution scan.
 
 **Auto fetch_pages:** `GET /api/admin/npm/[identifier]` now automatically runs `fetch_pages.py --id <identifier>` (30 s timeout) if `imagePages` is empty, then re-reads the index before responding. No manual step needed for multi-page works.
 
@@ -185,7 +186,7 @@ python pipeline/process.py --id <identifier>
 | GET | `/api/admin/npm` | List/filter works. Params: `status`, `category`, `q`, `page` |
 | PATCH | `/api/admin/npm` | Update work: `identifier`, `status`, `annotationDraft`, `shiwen`, `styleSlug`, `calligrapher` |
 | GET | `/api/admin/npm/[id]` | Single work + boxes.json + pageCount. Auto-runs fetch_pages.py if imagePages empty. |
-| POST | `/api/admin/npm/[id]/process` | Trigger process.py; returns boxes. Body: `{ forceSplit?, closeKernel?, splitRatio?, noCrop?, imageOnly? }` |
+| POST | `/api/admin/npm/[id]/process` | Trigger process.py; returns boxes. Body: `{ forceSplit?, closeKernel?, splitRatio?, noCrop?, imageOnly?, page? }` |
 | GET | `/api/admin/npm-image/[id]` | Serve image. Params: `type` (`clean`/`binary`/`raw`), `page` |
 
 **POST /process response shape:**
@@ -209,7 +210,8 @@ All admin routes read/write `pipeline/data/works_index.json` directly via `fs` (
 - **Zoom**: Ctrl+wheel zooms; +/−/↺ buttons in header; coordinate math uses `scale = (clientWidth / imageSize.w) * zoom`
 - **Export shortcut**: 匯出 button next to 確認完成; only enabled when `work.status === "done"`. Calls `/api/admin/export` then `/api/admin/export/upload` sequentially without leaving the page.
 - **Undo/Redo (↩ ↪)**: Always visible in the top navbar. Up to 10 snapshots of `{ boxes, shiwenChars, shiwenInput, imageSize }`. `pushHistory()` is called before every destructive operation (偵測字框, 還原裁切, 清空框選); redo stack is cleared on any new action. State lives in `history` / `future` arrays; refs (`boxesRef`, `shiwenCharsRef`, `imageSizeRef`, `shiwenInputRef`) are used to read current values at push time without stale closures.
-- **還原裁切**: Sidebar button. Calls process route with `{ noCrop: true, imageOnly: true }`. Regenerates `clean.jpg` without the auto-crop, clears boxes (old coordinates are relative to the cropped image), updates `imageSize`. Does NOT overwrite `boxes.json`. Use when `isolate_text_region()` clips edge characters; then press 偵測字框 to re-detect on the full image.
+- **還原裁切**: Sidebar button. Calls process route with `{ noCrop: true, imageOnly: true, page: currentPage }`. Regenerates `clean.jpg` for the current page without auto-crop, clears only the current page's boxes (coordinates would be relative to the old cropped image), updates `pageSizes[currentPage]`. Does NOT overwrite `boxes.json`. Use when `isolate_text_region()` clips edge characters; then press 偵測字框 to re-detect on the full image.
+- **偵測字框**: Calls process route with `{ page: currentPage, ... }`. Runs detection on whichever page is currently viewed. Returns boxes for that page only — merges them into the current page, leaving other pages' boxes untouched. Character assignment is re-run globally across all pages after the merge.
 
 **Coordinate system:** Box `x/y/w/h` are in **natural image pixels** (not scaled pixels). All mouse coordinate math divides by `zoom * renderScale` to convert back to natural pixels before storing.
 
@@ -248,3 +250,5 @@ When adding features to the annotate page, add tests here first (Prove-It patter
 - **Cut mode and draw mode are mutually exclusive**: activating one deactivates the other. Both disable box drag and resize.
 - **`canFinish` guard**: `確認完成` requires `countMatch && styleInput.trim().length > 0 && boxes.length > 0`. The `boxes.length > 0` check is critical — without it, `0 === 0` (zero boxes matching zero 釋文 chars) would incorrectly enable the button.
 - **Export page `uploadedAt` indicator**: after a successful upload via `/api/admin/export/upload`, the route stamps `uploadedAt` onto the `works_index.json` entry. The export page shows a green ✓ 已上傳 pill for works where this field is set.
+- **Re-export after re-annotation**: when `PATCH /api/admin/npm` sets `status: "done"` on a work that already has `uploaded: true`, the handler resets `uploaded: false`. This makes `export.py` pick it up again without needing `--force`. Without this, re-completing an already-exported work silently skips the export step.
+- **R2 cache TTL**: `upload_work.py` sets `Cache-Control: public, max-age=3600` on uploaded WebP files. After overwriting an image on R2, clients holding a cached copy will see the old version for up to 1 hour. To see updated crops immediately, open the page in a private/incognito tab.
