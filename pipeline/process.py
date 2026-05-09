@@ -159,14 +159,15 @@ def mask_red_ink(img: np.ndarray) -> np.ndarray:
     return result
 
 
-def preprocess(img_path: Path) -> tuple[np.ndarray, np.ndarray]:
+def preprocess(img_path: Path, no_crop: bool = False) -> tuple[np.ndarray, np.ndarray]:
     """Return (color_cropped, binary_cropped)."""
     img = cv2.imread(str(img_path))
     if img is None:
         raise ValueError(f"Cannot read image: {img_path}")
 
     img = strip_color_bar(img)
-    img = isolate_text_region(img)
+    if not no_crop:
+        img = isolate_text_region(img)
     masked = mask_red_ink(img)
     binary = binarize(masked)
     return img, binary
@@ -508,7 +509,8 @@ def save_debug_image(
 # ── Main processing ───────────────────────────────────────────────────────────
 
 def process_work(identifier: str, force_split: bool = False, debug: bool = False,
-                 close_kernel: int = 6, split_ratio: float = 1.5):
+                 close_kernel: int = 6, split_ratio: float = 1.5, no_crop: bool = False,
+                 image_only: bool = False):
     index = load_index()
     entry = index.get(identifier)
     if not entry:
@@ -528,15 +530,23 @@ def process_work(identifier: str, force_split: bool = False, debug: bool = False
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Processing: {entry['name']}")
+    if no_crop:
+        print("  (--no-crop: skipping isolate_text_region)")
 
     shiwen = entry.get("shiwen") or ""
     shiwen_chars = [c for c in shiwen if c.strip() and c not in "。，、；：「」『』【】〔〕…—"]
 
     # Step 1: Preprocess
     print("  [1/3] Preprocessing...")
-    img_color, binary = preprocess(img_path)
+    img_color, binary = preprocess(img_path, no_crop=no_crop)
     cv2.imwrite(str(out_dir / "clean.jpg"), img_color)
     cv2.imwrite(str(out_dir / "binary.jpg"), binary)
+
+    if image_only:
+        result = {"imageSize": {"w": img_color.shape[1], "h": img_color.shape[0]}}
+        (out_dir / "imageonly.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+        print(f"\n✓ Image regenerated (no detection): {out_dir}")
+        return
 
     # Step 2: Column + character detection
     print("  [2/3] Detecting columns and characters...")
@@ -648,9 +658,14 @@ def main():
     parser.add_argument("--split-ratio", type=float, default=1.5, metavar="X",
         help="分割靈敏度 — split any blob taller than X × median char height (default 1.5). "
              "Lower = split more aggressively.")
+    parser.add_argument("--no-crop", action="store_true",
+        help="Skip horizontal crop (isolate_text_region) — use when the auto-crop cuts off characters.")
+    parser.add_argument("--image-only", action="store_true",
+        help="Regenerate clean.jpg only, skip detection. Combine with --no-crop to undo a bad crop.")
     args = parser.parse_args()
     process_work(args.id, force_split=args.force_split, debug=args.debug,
-                 close_kernel=args.close_kernel, split_ratio=args.split_ratio)
+                 close_kernel=args.close_kernel, split_ratio=args.split_ratio,
+                 no_crop=args.no_crop, image_only=args.image_only)
 
 
 if __name__ == "__main__":

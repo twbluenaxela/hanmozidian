@@ -159,7 +159,7 @@ Run in order for a new work:
 # 1. Ingest metadata from NPM API
 python pipeline/ingest.py --id <identifier>
 
-# 2. Scrape all page image URLs
+# 2. Scrape all page image URLs (now runs automatically on first annotate-page load)
 python pipeline/fetch_pages.py --id <identifier>
 
 # 3. Run OpenCV detection (or trigger via UI button "偵測字框")
@@ -167,6 +167,12 @@ python pipeline/process.py --id <identifier>
 ```
 
 `process.py` steps: strip colour bar → isolate scroll paper → binarize → detect columns → detect chars per column → expand boxes horizontally → save `boxes.json`. See `pipeline/AGENT.md` for full details.
+
+**Additional `process.py` flags:**
+- `--no-crop` — skips `isolate_text_region()`. Use when auto-crop cuts off edge characters.
+- `--image-only` — regenerates `clean.jpg`/`binary.jpg` and writes `imageonly.json` (imageSize only), then exits without running detection. Combine with `--no-crop` to undo a bad crop without losing existing box annotations. Output goes to `processed/<safe>/imageonly.json`, never overwrites `boxes.json`.
+
+**Auto fetch_pages:** `GET /api/admin/npm/[identifier]` now automatically runs `fetch_pages.py --id <identifier>` (30 s timeout) if `imagePages` is empty, then re-reads the index before responding. No manual step needed for multi-page works.
 
 **Full OpenCV pipeline documentation:** See `pipeline/AGENT.md` for architecture, tuning parameters, known problem cases, and NPM image composition details.
 
@@ -178,9 +184,13 @@ python pipeline/process.py --id <identifier>
 |--------|------|-------------|
 | GET | `/api/admin/npm` | List/filter works. Params: `status`, `category`, `q`, `page` |
 | PATCH | `/api/admin/npm` | Update work: `identifier`, `status`, `annotationDraft`, `shiwen`, `styleSlug`, `calligrapher` |
-| GET | `/api/admin/npm/[id]` | Single work + boxes.json + pageCount |
-| POST | `/api/admin/npm/[id]/process` | Trigger process.py; returns boxes |
+| GET | `/api/admin/npm/[id]` | Single work + boxes.json + pageCount. Auto-runs fetch_pages.py if imagePages empty. |
+| POST | `/api/admin/npm/[id]/process` | Trigger process.py; returns boxes. Body: `{ forceSplit?, closeKernel?, splitRatio?, noCrop?, imageOnly? }` |
 | GET | `/api/admin/npm-image/[id]` | Serve image. Params: `type` (`clean`/`binary`/`raw`), `page` |
+
+**POST /process response shape:**
+- Normal: `{ ok: true, boxes: BoxesData }`
+- `imageOnly: true`: `{ ok: true, imageOnly: true, imageSize: { w, h } }` — boxes.json is NOT touched; read `imageonly.json` instead.
 
 All admin routes read/write `pipeline/data/works_index.json` directly via `fs` (no database). This file is the sole persistence layer for the annotation system.
 
@@ -189,15 +199,23 @@ All admin routes read/write `pipeline/data/works_index.json` directly via `fs` (
 ## Annotate Canvas — Key Behaviors
 
 - **Draw mode**: toggled by "繪製新框" button; cursor becomes crosshair; mousedown/mouseup on canvas draws a new box
+- **Cut mode**: toggled by "✂ 剪切" button (mutually exclusive with draw mode); clicking any box splits it into two equal halves (top + bottom). Both halves inherit the original box's `source`, `confidence`, `char`, and `page`. Uses `crypto.randomUUID()` for new IDs.
 - **Select**: click a box to select it (sets `selectedIds`); shift+click toggles multi-select
-- **Drag**: mousedown on a box (non-shift, non-draw-mode) starts drag via global mousemove/mouseup listeners
-- **Resize**: 8 handles rendered only when exactly one box is selected; uses `resizingRef` (not state) to avoid re-render churn
+- **Drag**: mousedown on a box (non-shift, non-draw-mode, non-cut-mode) starts drag via global mousemove/mouseup listeners
+- **Resize**: 8 handles rendered only when exactly one box is selected; uses `resizingRef` (not state) to avoid re-render churn. Disabled in cut mode.
 - **Delete**: Delete/Backspace key removes all selected boxes (no-op when an input/textarea is focused)
 - **Deselect**: clicking the canvas background (not a box, not in draw mode) clears selection
 - **Auto-save**: `saveDraft` runs every 30 seconds while status is not "done"
 - **Zoom**: Ctrl+wheel zooms; +/−/↺ buttons in header; coordinate math uses `scale = (clientWidth / imageSize.w) * zoom`
+- **Export shortcut**: 匯出 button next to 確認完成; only enabled when `work.status === "done"`. Calls `/api/admin/export` then `/api/admin/export/upload` sequentially without leaving the page.
+- **Undo/Redo (↩ ↪)**: Always visible in the top navbar. Up to 10 snapshots of `{ boxes, shiwenChars, shiwenInput, imageSize }`. `pushHistory()` is called before every destructive operation (偵測字框, 還原裁切, 清空框選); redo stack is cleared on any new action. State lives in `history` / `future` arrays; refs (`boxesRef`, `shiwenCharsRef`, `imageSizeRef`, `shiwenInputRef`) are used to read current values at push time without stale closures.
+- **還原裁切**: Sidebar button. Calls process route with `{ noCrop: true, imageOnly: true }`. Regenerates `clean.jpg` without the auto-crop, clears boxes (old coordinates are relative to the cropped image), updates `imageSize`. Does NOT overwrite `boxes.json`. Use when `isolate_text_region()` clips edge characters; then press 偵測字框 to re-detect on the full image.
 
 **Coordinate system:** Box `x/y/w/h` are in **natural image pixels** (not scaled pixels). All mouse coordinate math divides by `zoom * renderScale` to convert back to natural pixels before storing.
+
+**`renderScale` and `pageSizes`:** `renderScale = clientWidth / naturalWidth` is set in `handleImageLoad` (fires on `onLoad`). `pageSizes` maps page index → `{w, h}` and drives the preview panel crop calculations. **Both must be invalidated when `clean.jpg` is regenerated** — `applyBoxData` calls `setPageSizes({})` before incrementing `imgVersion` so hidden probe images re-measure the new dimensions. If preview crops are misaligned after reprocessing, this reset is the first thing to check.
+
+**Image cache-control:** The `npm-image` API route serves `processed/` files with `Cache-Control: no-store` and `raw/` files with `private, max-age=3600`. This prevents stale `clean.jpg` from being served after reprocessing. The `?v=${imgVersion}` query param on the main canvas image forces a fresh fetch even if the browser has a cached response.
 
 ---
 
@@ -223,5 +241,10 @@ When adding features to the annotate page, add tests here first (Prove-It patter
 - **`safeFilename`**: identifiers contain Chinese characters; both Python (`urllib.parse.quote`) and TypeScript (`encodeURIComponent`) encode them, replacing `%` with `_`. Always use `safeFilename(identifier)` when constructing file paths.
 - **Double-encoded draft**: `entry.annotationDraft` is a JSON string stored inside the JSON index. It must be `JSON.stringify`'d before saving and `JSON.parse`'d after loading.
 - **Page index is 0-based internally**, but displayed as 1-based in the UI ("頁 1 / 12" = `currentPage === 0`).
-- **`imagePages[]` must be scraped separately** via `fetch_pages.py`. The NPM open-data API does not return them. Without this step, multi-page navigation will proxy the same first image for all pages.
-- **process.py requires `.venv`**: The Next.js process route calls `.venv/bin/python3`. The virtualenv must exist at project root with `opencv-python`, `paddlepaddle`, and `paddleocr` installed (see `pipeline/requirements.txt`).
+- **`imagePages[]` is now auto-scraped** by `GET /api/admin/npm/[id]` if empty. Manual `fetch_pages.py --id` is no longer needed on first open, but the script still works for bulk backfills.
+- **process.py requires `.venv`**: The Next.js process route calls `.venv/bin/python3`. The virtualenv must exist at project root with `opencv-python` installed. PaddleOCR has been removed — do not re-add it.
+- **`--image-only` does not touch `boxes.json`**: it writes `imageonly.json` instead. The route reads `imageonly.json` and returns `{ imageOnly: true, imageSize }`. Do not confuse with a normal process run.
+- **還原裁切 clears boxes**: because existing box coordinates are relative to the cropped `clean.jpg`. After undoing the crop, re-run 偵測字框 on the new full image. Use ↩ to revert if the result is worse.
+- **Cut mode and draw mode are mutually exclusive**: activating one deactivates the other. Both disable box drag and resize.
+- **`canFinish` guard**: `確認完成` requires `countMatch && styleInput.trim().length > 0 && boxes.length > 0`. The `boxes.length > 0` check is critical — without it, `0 === 0` (zero boxes matching zero 釋文 chars) would incorrectly enable the button.
+- **Export page `uploadedAt` indicator**: after a successful upload via `/api/admin/export/upload`, the route stamps `uploadedAt` onto the `works_index.json` entry. The export page shows a green ✓ 已上傳 pill for works where this field is set.

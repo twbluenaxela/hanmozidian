@@ -58,9 +58,13 @@ export async function POST(
   let forceSplit = false;
   let closeKernel = 6;
   let splitRatio = 1.5;
+  let noCrop = false;
+  let imageOnly = false;
   try {
     const body = await req.json();
     forceSplit = body?.forceSplit === true;
+    noCrop = body?.noCrop === true;
+    imageOnly = body?.imageOnly === true;
     if (typeof body?.closeKernel === "number") closeKernel = Math.round(Math.min(15, Math.max(1, body.closeKernel)));
     if (typeof body?.splitRatio === "number") splitRatio = Math.min(2.5, Math.max(1.1, body.splitRatio));
   } catch {
@@ -82,6 +86,8 @@ export async function POST(
     "--split-ratio", String(splitRatio),
   ];
   if (forceSplit) pyArgs.push("--force-split");
+  if (noCrop) pyArgs.push("--no-crop");
+  if (imageOnly) pyArgs.push("--image-only");
 
   const result = spawnSync(
     PYTHON,
@@ -96,6 +102,19 @@ export async function POST(
 
   const safe = safeFilename(identifier);
   const processedDir = path.join(DATA_DIR, "processed");
+
+  if (imageOnly) {
+    const imageonlyFile = path.resolve(processedDir, safe, "imageonly.json");
+    if (!imageonlyFile.startsWith(processedDir + path.sep)) {
+      return NextResponse.json({ error: "invalid identifier" }, { status: 400 });
+    }
+    if (!fs.existsSync(imageonlyFile)) {
+      return NextResponse.json({ error: "process.py produced no output" }, { status: 500 });
+    }
+    const data = JSON.parse(fs.readFileSync(imageonlyFile, "utf-8"));
+    return NextResponse.json({ ok: true, imageOnly: true, imageSize: data.imageSize });
+  }
+
   const boxesFile = path.resolve(processedDir, safe, "boxes.json");
   if (!boxesFile.startsWith(processedDir + path.sep)) {
     return NextResponse.json({ error: "invalid identifier" }, { status: 400 });

@@ -124,6 +124,10 @@ function AnnotateInner() {
   const previewScrollRef = useRef<HTMLDivElement>(null);
   const [pageSizes, setPageSizes] = useState<Record<number, { w: number; h: number }>>({});
 
+  type Snapshot = { boxes: Box[]; shiwenChars: string[]; shiwenInput: string; imageSize: { w: number; h: number } };
+  const [history, setHistory] = useState<Snapshot[]>([]);
+  const [future, setFuture] = useState<Snapshot[]>([]);
+
 
   // If the work is "backward", create [11, 10, 9... 0]
   // If "forward", create [0, 1, 2, 3... 11]
@@ -153,6 +157,10 @@ function AnnotateInner() {
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { renderScaleRef.current = renderScale; }, [renderScale]);
   useEffect(() => { shiwenCharsRef.current = shiwenChars; }, [shiwenChars]);
+  const imageSizeRef = useRef(imageSize);
+  const shiwenInputRef = useRef(shiwenInput);
+  useEffect(() => { imageSizeRef.current = imageSize; }, [imageSize]);
+  useEffect(() => { shiwenInputRef.current = shiwenInput; }, [shiwenInput]);
 
   // Load work data
   useEffect(() => {
@@ -206,8 +214,60 @@ function AnnotateInner() {
     setImgVersion((v) => v + 1);
   }, []);
 
-  const runProcessing = useCallback(async (forceSplit = false) => {
+  const pushHistory = useCallback(() => {
+    const snap = {
+      boxes: boxesRef.current,
+      shiwenChars: shiwenCharsRef.current,
+      shiwenInput: shiwenInputRef.current,
+      imageSize: imageSizeRef.current,
+    };
+    setHistory(h => [...h.slice(-9), snap]);
+    setFuture([]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    setHistory(h => {
+      if (h.length === 0) return h;
+      const snap = h[h.length - 1];
+      const current = {
+        boxes: boxesRef.current,
+        shiwenChars: shiwenCharsRef.current,
+        shiwenInput: shiwenInputRef.current,
+        imageSize: imageSizeRef.current,
+      };
+      setFuture(f => [current, ...f.slice(0, 9)]);
+      setBoxes(snap.boxes);
+      setShiwenChars(snap.shiwenChars);
+      setShiwenInput(snap.shiwenInput);
+      setImageSize(snap.imageSize);
+      setImgVersion(v => v + 1);
+      return h.slice(0, -1);
+    });
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    setFuture(f => {
+      if (f.length === 0) return f;
+      const snap = f[0];
+      const current = {
+        boxes: boxesRef.current,
+        shiwenChars: shiwenCharsRef.current,
+        shiwenInput: shiwenInputRef.current,
+        imageSize: imageSizeRef.current,
+      };
+      setHistory(h => [...h.slice(-9), current]);
+      setBoxes(snap.boxes);
+      setShiwenChars(snap.shiwenChars);
+      setShiwenInput(snap.shiwenInput);
+      setImageSize(snap.imageSize);
+      setImgVersion(v => v + 1);
+      return f.slice(1);
+    });
+  }, []);
+
+  const runProcessing = useCallback(async (forceSplit = false, noCrop = false, imageOnly = false) => {
     if (!identifier) return;
+    pushHistory();
     setProcessing(true);
     setProcessError(null);
     try {
@@ -216,11 +276,18 @@ function AnnotateInner() {
       const res = await fetch(`/api/admin/npm/${encodeURIComponent(identifier)}/process`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ forceSplit, closeKernel, splitRatio }),
+        body: JSON.stringify({ forceSplit, closeKernel, splitRatio, noCrop, imageOnly }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "processing failed");
-      if (data.boxes) applyBoxData(data.boxes, shiwenInput);
+      if (data.imageOnly) {
+        setImageSize(data.imageSize);
+        setBoxes([]);
+        setShiwenChars([]);
+        setImgVersion(v => v + 1);
+      } else if (data.boxes) {
+        applyBoxData(data.boxes, shiwenInput);
+      }
     } catch (e: any) {
       setProcessError(e.message);
     } finally {
@@ -478,6 +545,7 @@ function AnnotateInner() {
   };
 
   const clearAllBoxes = () => {
+    pushHistory();
     setBoxes([]);
     setSelectedIds(new Set());
   };
@@ -584,6 +652,16 @@ function AnnotateInner() {
         <button onClick={() => { saveDraft(work.status === "done" ? "done" : "annotating"); router.push("/admin"); }}
           className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors text-sm">
           ←
+        </button>
+        <button onClick={handleUndo} disabled={history.length === 0}
+          title={history.length > 0 ? `復原 (${history.length})` : "無可復原"}
+          className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed">
+          ↩
+        </button>
+        <button onClick={handleRedo} disabled={future.length === 0}
+          title={future.length > 0 ? `重做 (${future.length})` : "無可重做"}
+          className="w-8 h-8 flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] transition-colors text-sm disabled:opacity-30 disabled:cursor-not-allowed">
+          ↪
         </button>
         <div className="flex-1 min-w-0">
           <p className="font-display text-base truncate">{displayTitle}</p>
@@ -757,21 +835,71 @@ function AnnotateInner() {
           <div>
             <p className="text-[10px] uppercase font-bold text-[var(--accent)] mb-2">工具</p>
             <div className="space-y-2">
-              <div className="flex gap-2">
+              {/* Icon toolbar */}
+              <div className="flex gap-1">
+                {/* Draw */}
                 <button
                   onClick={() => { setDrawMode((v) => !v); setCutMode(false); }}
-                  className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-colors ${
+                  title={drawMode ? "繪製模式（點擊關閉）" : "繪製新框"}
+                  className={`flex-1 py-2 rounded-lg border transition-colors ${
                     drawMode ? "bg-[var(--accent)] text-[var(--background)]" : "border-[var(--border)]"
                   }`}>
-                  {drawMode ? "繪製 ✓" : "繪製新框"}
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="mx-auto">
+                    <path d="M1 5 L1 1 L5 1"/>
+                    <path d="M11 1 L15 1 L15 5"/>
+                    <path d="M1 11 L1 15 L5 15"/>
+                    <path d="M11 15 L15 15 L15 11"/>
+                    <line x1="8" y1="5.5" x2="8" y2="10.5"/>
+                    <line x1="5.5" y1="8" x2="10.5" y2="8"/>
+                  </svg>
                 </button>
+                {/* Cut */}
                 <button
                   onClick={() => { setCutMode((v) => !v); setDrawMode(false); }}
-                  title="剪切模式：點擊任意框將其對切為上下兩半"
-                  className={`flex-1 py-2 rounded-lg border text-xs font-bold transition-colors ${
+                  title={cutMode ? "剪切模式（點擊關閉）" : "剪切：點擊任意框將其對切為上下兩半"}
+                  className={`flex-1 py-2 rounded-lg border text-base font-bold transition-colors ${
                     cutMode ? "bg-[var(--accent)] text-[var(--background)]" : "border-[var(--border)]"
                   }`}>
-                  {cutMode ? "剪切 ✓" : "✂ 剪切"}
+                  ✂
+                </button>
+                {/* Detect */}
+                <button
+                  onClick={() => runProcessing(false)}
+                  disabled={processing}
+                  title="偵測字框"
+                  className="flex-1 py-2 rounded-lg border border-[var(--border)] transition-colors disabled:opacity-40">
+                  {processing ? <span className="text-base">⏳</span> : (
+                    <span className="flex flex-col items-center gap-0.5">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="mx-auto">
+                        <path d="M1 5 L1 1 L5 1"/>
+                        <path d="M11 1 L15 1 L15 5"/>
+                        <path d="M1 11 L1 15 L5 15"/>
+                        <path d="M11 15 L15 15 L15 11"/>
+                        <path d="M8,4 L9.3,6.7 L12,8 L9.3,9.3 L8,12 L6.7,9.3 L4,8 L6.7,6.7 Z" strokeWidth="1" fill="currentColor"/>
+                      </svg>
+                      <span className="text-[9px] leading-none">偵測</span>
+                    </span>
+                  )}
+                </button>
+                {/* Undo crop */}
+                <button
+                  onClick={() => runProcessing(false, true, true)}
+                  disabled={processing}
+                  title="還原裁切：移除自動裁切，顯示完整原始圖片（不重新偵測）"
+                  className="flex-1 py-2 rounded-lg border border-[var(--border)] transition-colors disabled:opacity-40 opacity-70 hover:opacity-100">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="mx-auto">
+                    <path d="M1 5 L4 5 L4 1"/>
+                    <path d="M15 11 L12 11 L12 15"/>
+                    <line x1="6" y1="6" x2="10" y2="10"/>
+                    <line x1="10" y1="6" x2="6" y2="10"/>
+                  </svg>
+                </button>
+                {/* Clear all */}
+                <button onClick={clearAllBoxes}
+                  disabled={boxes.length === 0}
+                  title="清空所有框選"
+                  className="flex-1 py-2 rounded-lg border border-[var(--border)] text-base text-[var(--muted)] hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-30">
+                  🗑
                 </button>
               </div>
               <div className="space-y-2 px-1">
@@ -800,19 +928,6 @@ function AnnotateInner() {
                   </div>
                 </div>
               </div>
-              <button
-                onClick={() => runProcessing(false)}
-                disabled={processing}
-                className="w-full py-2 rounded-lg border border-[var(--border)] text-xs font-bold transition-colors disabled:opacity-40">
-                {processing ? "偵測中..." : "偵測字框"}
-              </button>
-              <button
-                onClick={() => runProcessing(true)}
-                disabled={processing}
-                title="按釋文字數強制等分（行書/草書適用）"
-                className="w-full py-2 rounded-lg border border-[var(--border)] text-xs font-bold transition-colors disabled:opacity-40 opacity-70 hover:opacity-100">
-                {processing ? "偵測中..." : "強制等分"}
-              </button>
               {processError && (
                 <p className="text-xs text-red-400 text-center">{processError}</p>
               )}
@@ -822,11 +937,6 @@ function AnnotateInner() {
                   {selectedIds.size > 1 ? `刪除 ${selectedIds.size} 框 (Del)` : "刪除選取框 (Del)"}
                 </button>
               )}
-              <button onClick={clearAllBoxes}
-                disabled={boxes.length === 0}
-                className="w-full py-2 rounded-lg border border-[var(--border)] text-[var(--muted)] text-xs font-bold hover:border-red-400 hover:text-red-400 transition-colors disabled:opacity-30">
-                清空框選
-              </button>
             </div>
           </div>
 
