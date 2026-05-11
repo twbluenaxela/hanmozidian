@@ -177,6 +177,130 @@ npm run deploy  # 包含 WAL checkpoint + fly deploy
 | 收藏邏輯 | `lib/favorites.ts` |
 | 集字儲存 | `lib/savedJizi.ts` |
 
+## 11. HuggingFace ML Pipeline
+
+### 背景與核心問題
+
+草書字元偵測面臨根本性的「先有雞還是先有蛋」問題：
+
+- OpenCV 投影法（`process.py`）依賴字元之間的墨水間隙。楷書/隸書有間隙，可以運作。
+- 草書沒有間隙——相鄰字的筆劃物理上連接（牽絲）。純視覺分割無法找到邊界。
+- **結論**：草書分割本質上需要識別。沒有語義理解就無法知道邊界在哪裡。
+
+正確的方法是**強制對齊（Forced Alignment）**：給模型圖像 AND 已知的釋文字符序列，要求它定位每個字元。這與語音識別中的強制對齊（對齊音頻與已知文本）原理相同。
+
+### 現有 HuggingFace 腳本
+
+| 腳本 | 功能 | 狀態 |
+|------|------|------|
+| `pipeline/hf_validate.py` | 驗證：送出個別字元圖塊，問模型「這是不是字 X？」| 已有 |
+| `pipeline/hf_segment.py` | 強制對齊：送出整欄圖像 + 釋文序列，要求模型定位每個字元 | 已有 |
+
+**為什麼 hf_validate.py 方向是錯的**：先裁切再問「這是不是 X？」假設裁切已經正確。對草書而言裁切本身就是問題。`hf_segment.py` 才是正確方向。
+
+### 執行強制對齊實驗
+
+```bash
+source .venv/bin/activate
+
+# 找一個已標注的草書作品（status=done 且有 annotationDraft）
+# 先跑 2 欄測試，--debug 輸出視覺化圖像
+python pipeline/hf_segment.py --id 贈書00043100000 --limit 2 --debug
+
+# 看結果
+explorer.exe pipeline/data/processed/  # 找 hf_segment_debug.jpg
+# 綠框 = 人工標注（ground truth），藍框 = VLM 預測
+```
+
+輸出指標：
+- **IoU ≥ 0.5**（✓）= 良好對齊
+- **IoU 0.3–0.5**（~）= 部分對齊
+- **IoU < 0.3**（✗）= 未命中
+
+預測結果存於 `processed/<safe>/hf_segment_boxes.json`。
+
+### 目前資料狀況（截至 2026-05-11）
+
+| 書體 | 圖像數 | 唯一字元 | 已標注作品 |
+|------|--------|---------|-----------|
+| 楷書 | 77,208 | 6,876 | 多 |
+| 行書 | 70,501 | 6,735 | 多 |
+| 草書 | 18,972 | 2,861 | **6 件** |
+| 隸書 | 35,447 | 6,464 | 多 |
+
+草書字元分布（嚴重不均）：
+- ≥50 個範例：3 個字
+- 10–49 個範例：723 個字
+- 5–9 個範例：717 個字
+- 1–4 個範例：1,418 個字
+
+**約 28 個已標注欄位**（6 件作品 × 平均 ~5 欄）。
+
+### 訓練自己的模型：需求與路線圖
+
+#### 階段一：繼續用 HF Inference API（現在，免費）
+
+使用 `hf_validate.py` 和 `hf_segment.py` 對接 HuggingFace 無伺服器推論 API（免費，有速率限制）。主要目的：
+- 累積實驗數據，了解 VLM 在草書上的能力極限
+- 用 IoU 評估建立評估體系
+- 繼續標注更多草書作品
+
+**模型選擇**：`Qwen/Qwen2.5-VL-7B-Instruct`（對中文字元理解最佳的開放模型）
+
+#### 階段二：微調字元分類器（需要 ~500 個已標注欄位）
+
+**目標**：一個能對裁切後的草書字元圖塊進行分類的模型。
+
+**需求**：
+- **資料量**：每個常用字至少 20–50 個範例（目前多數字只有 2–9 個）
+- **估計需要**：再標注 25–50 件草書作品（目前有 6 件）
+- **計算資源**：Google Colab 免費 T4 GPU 足夠微調小模型
+- **基礎模型候選**：
+  - `microsoft/trocr-base-handwritten` — 專為手寫文字識別設計
+  - `google/vit-base-patch16-224` — 通用圖像分類 ViT，可在字元圖塊上微調
+- **HuggingFace 工具**：`transformers.Trainer` + `datasets` 函式庫
+
+**資料格式**（HuggingFace Dataset）：
+```python
+# 每條記錄
+{
+  "image": PIL.Image,   # 256×256 WebP 字元圖塊（已在 export.py 中產生）
+  "label": "之",        # Unicode 字元
+  "style": "cao",       # 書體
+  "calligrapher": "王羲之",
+}
+```
+
+已存在的 256×256 WebP 圖像（`public/images/cao/`）可直接用作訓練資料。
+
+#### 階段三：強制對齊模型（需要 ~1,000 個已標注欄位）
+
+**目標**：輸入整欄圖像 + 釋文字序列，輸出每個字的邊界框。這才是真正解決草書分割問題的模型。
+
+**需求**：
+- **資料量**：至少 500–1,000 個已標注欄位（每欄有 ground-truth 邊界框 + 字序列）
+- **估計需要**：再標注 50–100 件草書作品
+- **計算資源**：需要比 Colab 免費版更多的資源（建議用 Colab Pro 或 Kaggle Notebooks）
+- **基礎模型候選**：
+  - `Qwen/Qwen2.5-VL-2B-Instruct`（2B 參數，可在有限資源下微調）
+  - 或自訂 DETR-based 偵測頭接在 ViT backbone 上
+
+**現有 `annotationDraft` 資料就是訓練資料**：每件標注完成的作品已提供欄位圖像 + 字序列 + 邊界框，格式完全匹配訓練需求。
+
+#### 模型訓練後的部署
+
+訓練完成的模型可推送到 HuggingFace Hub（免費存放），然後：
+- 通過 HF Inference API 呼叫（若模型夠小）
+- 或在本機/Docker 容器中執行推論
+
+### 關鍵規則
+
+- **不要在草書上用 process.py 的 OpenCV 投影法**，改用 `--force-split` 或 `hf_segment.py`
+- **hf_validate.py 對草書用處有限**——驗證已裁切的圖塊，但草書的問題在裁切本身
+- **HUGGINGFACE_API_KEY** 從 `.env.local` 讀取（參見 `.env.local.example`）
+- **訓練資料就在 `public/images/cao/`**——18,972 張 256×256 WebP，可直接用於分類器訓練
+- **評估指標用 IoU**：`hf_segment.py` 已實作，可當作所有後續模型評估的基準
+
 ---
 
 *完整專案摘要請見 `SUMMARY.md`，使用說明請見 `README.md`*
