@@ -198,24 +198,52 @@ npm run deploy  # 包含 WAL checkpoint + fly deploy
 
 **為什麼 hf_validate.py 方向是錯的**：先裁切再問「這是不是 X？」假設裁切已經正確。對草書而言裁切本身就是問題。`hf_segment.py` 才是正確方向。
 
+### 強制對齊實驗結果（2026-05-11）
+
+**已在 Google Colab（T4 GPU）上用 Qwen2.5-VL-3B-Instruct 完成實驗。**
+
+實驗腳本：`cao_segment_experiment.ipynb`（上傳 Colab 執行）  
+資料準備：`extract_col.py`（本機執行，輸出欄位圖像和 ground truth boxes）
+
+**結果：Mean IoU = 0.01 — 完全失敗**
+
+```
+[ 1] 浩  pred_y=5%  gt_y=4%   IoU=0.00 ✗
+[ 2] 復  pred_y=5%  gt_y=17%  IoU=0.14 ✗
+[ 3] 肫  pred_y=5%  gt_y=23%  IoU=0.00 ✗
+...（全部 y=5%）
+Mean IoU: 0.02
+```
+
+**失敗模式**：模型將所有字元預測為同一水平行（y≈5%，x 依序遞增）。它以為在讀橫排文字，完全忽略了直欄的垂直結構。
+
+**根本原因（非提示詞問題）**：
+
+1. Qwen2.5-VL-3B 的訓練資料中橫排文字佔絕大多數。它沒有「直欄書法，y 值由上至下遞增」的概念。
+2. 這不是提示詞工程可以解決的問題——即使明確說明「由上至下」、「y 值必須遞增」，模型仍輸出橫排座標。
+3. **結論：零樣本 VLM 強制對齊對草書直欄無效**。必須微調。
+
+**IoU 說明**（Intersection over Union）：
+- 測量預測框與 ground truth 框的重疊比例
+- 1.0 = 完全重疊，0.0 = 完全不重疊
+- 通用物件偵測標準：≥0.5 良好，0.3–0.5 部分，<0.3 未命中
+- 所有預測框與 ground truth 框完全不接觸，故 IoU ≈ 0
+
 ### 執行強制對齊實驗
 
 ```bash
+# 1. 本機：準備欄位圖像（裁切單欄，調整座標）
 source .venv/bin/activate
+python3 extract_col.py
+cp /tmp/col_experiment.jpg /tmp/col_boxes.json /mnt/c/Users/redna/Downloads/
 
-# 找一個已標注的草書作品（status=done 且有 annotationDraft）
-# 先跑 2 欄測試，--debug 輸出視覺化圖像
-python pipeline/hf_segment.py --id 贈書00043100000 --limit 2 --debug
-
-# 看結果
-explorer.exe pipeline/data/processed/  # 找 hf_segment_debug.jpg
-# 綠框 = 人工標注（ground truth），藍框 = VLM 預測
+# 2. Colab：上傳 cao_segment_experiment.ipynb，依序執行所有 cell
+# Cell 1: 安裝套件（sympy==1.13.3 + transformers + qwen-vl-utils）
+# Cell 2: HF 認證（需在 Colab Secrets 設定 HUGGING_FACE_API）
+# Cell 3: 載入 Qwen2.5-VL-3B（~5 分鐘，下載 ~6GB）
+# Cell 4: 上傳 col_experiment.jpg 和 col_boxes.json
+# Cell 5+: 執行推論 + IoU 評分
 ```
-
-輸出指標：
-- **IoU ≥ 0.5**（✓）= 良好對齊
-- **IoU 0.3–0.5**（~）= 部分對齊
-- **IoU < 0.3**（✗）= 未命中
 
 預測結果存於 `processed/<safe>/hf_segment_boxes.json`。
 
@@ -238,14 +266,16 @@ explorer.exe pipeline/data/processed/  # 找 hf_segment_debug.jpg
 
 ### 訓練自己的模型：需求與路線圖
 
-#### 階段一：繼續用 HF Inference API（現在，免費）
+#### 階段一：建立資料集（現在進行中）
 
-使用 `hf_validate.py` 和 `hf_segment.py` 對接 HuggingFace 無伺服器推論 API（免費，有速率限制）。主要目的：
-- 累積實驗數據，了解 VLM 在草書上的能力極限
-- 用 IoU 評估建立評估體系
-- 繼續標注更多草書作品
+**已驗證：零樣本 VLM 強制對齊無效（Mean IoU = 0.01）。** 不需要再嘗試提示詞工程——這是訓練資料不足的問題，不是提示詞問題。
 
-**模型選擇**：`Qwen/Qwen2.5-VL-7B-Instruct`（對中文字元理解最佳的開放模型）
+當前階段的正確工作：
+- 繼續用標注 UI（`/admin/annotate`）標注更多草書作品
+- 每件完成的作品 = 更多（欄位圖像、字序列、邊界框）訓練三元組
+- 評估基準已建立：Mean IoU，目標從 0.01 提升到 0.5+
+
+**HF Serverless Inference API 注意事項**：視覺模型需要付費帳戶（Pro $9/月）。免費帳戶只支援文字模型。實驗改用 Google Colab（免費 T4 GPU）直接載入模型權重。
 
 #### 階段二：微調字元分類器（需要 ~500 個已標注欄位）
 
@@ -254,11 +284,14 @@ explorer.exe pipeline/data/processed/  # 找 hf_segment_debug.jpg
 **需求**：
 - **資料量**：每個常用字至少 20–50 個範例（目前多數字只有 2–9 個）
 - **估計需要**：再標注 25–50 件草書作品（目前有 6 件）
-- **計算資源**：Google Colab 免費 T4 GPU 足夠微調小模型
+- **計算資源**：Google Colab 免費 T4 GPU 足夠訓練小型 CNN 或微調 2B VLM
 - **基礎模型候選**：
-  - `microsoft/trocr-base-handwritten` — 專為手寫文字識別設計
-  - `google/vit-base-patch16-224` — 通用圖像分類 ViT，可在字元圖塊上微調
+  - **ResNet50 從頭訓練**（分類器）— ImageNet 預訓練權重對墨跡幾乎沒有幫助，但 CNN 架構本身對圖像分類有效。資料夠多時可行。
+  - **不要用 `microsoft/trocr-base-handwritten`** — 幾乎全部訓練資料是英文手寫，解碼器詞彙表不含中文字元，強制微調代價極高。
+  - **不要用通用 ViT（如 `google/vit-base-patch16-224`）** — ImageNet 預訓練特徵（照片中的物體）與墨跡筆劃無關，等同從頭訓練，沒有遷移優勢。
+  - **較好的起點**：在中文文件或書法資料上預訓練的模型（如 Qwen2.5-VL 的視覺編碼器），其特徵表示對漢字有更強的先驗知識。
 - **HuggingFace 工具**：`transformers.Trainer` + `datasets` 函式庫
+- **替代方案（不需訓練）**：用 Qwen2.5-VL 視覺編碼器提取字元圖塊的嵌入向量，對已標注的 18K 圖塊做最近鄰檢索（KNN）。不需任何訓練，現在就能用。
 
 **資料格式**（HuggingFace Dataset）：
 ```python
@@ -282,8 +315,8 @@ explorer.exe pipeline/data/processed/  # 找 hf_segment_debug.jpg
 - **估計需要**：再標注 50–100 件草書作品
 - **計算資源**：需要比 Colab 免費版更多的資源（建議用 Colab Pro 或 Kaggle Notebooks）
 - **基礎模型候選**：
-  - `Qwen/Qwen2.5-VL-2B-Instruct`（2B 參數，可在有限資源下微調）
-  - 或自訂 DETR-based 偵測頭接在 ViT backbone 上
+  - **`Qwen/Qwen2.5-VL-2B-Instruct`（強烈推薦）** — 2B 參數，已具備深度中文語義理解，可在 Colab T4 上微調。強制對齊任務（輸入欄位圖像 + 釋文序列 → 輸出邊界框）與其預訓練目標最為接近。
+  - 不要用通用物件偵測模型（DETR 等）——這些模型對「找到字 X 在哪裡」的語義理解為零，需要從頭學習中文字元概念。
 
 **現有 `annotationDraft` 資料就是訓練資料**：每件標注完成的作品已提供欄位圖像 + 字序列 + 邊界框，格式完全匹配訓練需求。
 
@@ -298,7 +331,7 @@ explorer.exe pipeline/data/processed/  # 找 hf_segment_debug.jpg
 - **不要在草書上用 process.py 的 OpenCV 投影法**，改用 `--force-split` 或 `hf_segment.py`
 - **hf_validate.py 對草書用處有限**——驗證已裁切的圖塊，但草書的問題在裁切本身
 - **HUGGINGFACE_API_KEY** 從 `.env.local` 讀取（參見 `.env.local.example`）
-- **訓練資料就在 `public/images/cao/`**——18,972 張 256×256 WebP，可直接用於分類器訓練
+- **`public/images/cao/` 有 18,972 張 256×256 WebP**，但來源不同：18,550 張來自 zi.tools 自動爬取（已預先裁切好的單字圖像），僅 422 張來自 NPM 人工標注。兩者都是已標注的草書字元圖塊，可直接用於分類器訓練。zi.tools 圖像的限制在於**來源偏差**——覆蓋的書家和作品與 NPM 館藏不完全重疊，而非風格難易度的差異。
 - **評估指標用 IoU**：`hf_segment.py` 已實作，可當作所有後續模型評估的基準
 
 ---
