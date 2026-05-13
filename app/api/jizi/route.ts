@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCharacterByChar, getImages, getJiziCoverage } from "@/lib/db/queries";
 import { resolveImageUrl, parseIdList } from "@/lib/utils";
+import { simplifiedToTraditional } from "@/lib/s2t";
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,11 @@ export async function GET(request: NextRequest) {
   const knownIds: number[] = [];
 
   for (const char of chars) {
-    const charRow = getCharacterByChar(char);
+    let charRow = getCharacterByChar(char);
+    if (!charRow) {
+      const converted = simplifiedToTraditional(char);
+      if (converted !== char) charRow = getCharacterByChar(converted);
+    }
     if (!charRow) {
       results.push({ character: char, images: [], found: false });
       continue;
