@@ -94,10 +94,11 @@ export default function PrivacyPage() {
           <p>
             Your data is stored on <strong className="font-semibold">Firebase</strong> (Google) servers, which may be located outside Taiwan (including in the United States).
             Calligraphy images are served via <strong className="font-semibold">Cloudflare R2</strong>.
+            Anonymised usage analytics are collected by <strong className="font-semibold">Umami</strong> (cloud.umami.is) — no cookies are used and no personally identifiable information is transmitted.
             No personal data is shared with, sold to, or disclosed to any other third parties.
           </p>
           <p>
-            您的資料儲存於 <strong className="font-semibold">Firebase</strong>（Google）伺服器，該伺服器可能位於台灣以外地區（包括美國）。書法圖片透過 <strong className="font-semibold">Cloudflare R2</strong> 提供。除上述服務外，您的個人資料不會提供、出售或揭露給任何其他第三方。
+            您的資料儲存於 <strong className="font-semibold">Firebase</strong>（Google）伺服器，該伺服器可能位於台灣以外地區（包括美國）。書法圖片透過 <strong className="font-semibold">Cloudflare R2</strong> 提供。本站使用 <strong className="font-semibold">Umami</strong>（cloud.umami.is）蒐集匿名化使用統計資料，不使用 Cookie，亦不傳輸任何可識別個人身份之資訊。除上述服務外，您的個人資料不會提供、出售或揭露給任何其他第三方。
           </p>
         </section>
 
@@ -120,13 +121,15 @@ export default function PrivacyPage() {
           <h2 className="text-xs text-[var(--muted)] uppercase tracking-widest">What We Do Not Collect · 不蒐集的資料</h2>
           <ul className="flex flex-col gap-1.5 pl-4">
             <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> No cookies or tracking pixels</li>
-            <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> No advertising or analytics SDKs</li>
+            <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> No advertising SDKs</li>
             <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> No payment information</li>
+            <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> No fingerprinting or cross-site tracking</li>
           </ul>
           <ul className="flex flex-col gap-1.5 pl-4">
             <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> 不使用 Cookie 或追蹤像素</li>
-            <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> 不使用廣告或分析 SDK</li>
+            <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> 不使用廣告 SDK</li>
             <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> 不蒐集任何付款資訊</li>
+            <li className="flex gap-2"><span className="text-[var(--muted)]">—</span> 不進行瀏覽器指紋識別或跨站追蹤</li>
           </ul>
         </section>
 
@@ -188,7 +191,7 @@ export default function PrivacyPage() {
           <p>
             若本站功能有重大變更，本政策可能隨之更新。下方日期為最後修訂日期。
           </p>
-          <p className="text-[var(--muted)] text-xs mt-1">Last updated · 最後更新：May 2026</p>
+          <p className="text-[var(--muted)] text-xs mt-1">Last updated · 最後更新：20 May 2026</p>
         </section>
 
       </div>
