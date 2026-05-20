@@ -15,6 +15,7 @@
 - **Firebase Auth** (Google + Email/Password)
 - **Cloudflare R2** (S3-compatible) for production images
 - **PWA** — installable via `app/manifest.ts`; network-only (no service worker)
+- **Umami Analytics** — privacy-friendly analytics via `cloud.umami.is`; script injected in `app/layout.tsx` `<head>`; website ID `073eb640-d571-4f40-95ea-40b6817f6f25`
 
 ## 設計系統 & 文件
 
