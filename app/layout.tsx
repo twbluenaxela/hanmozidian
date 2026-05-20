@@ -27,6 +27,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh" className={`h-full antialiased ${notoSerifTC.variable}`} suppressHydrationWarning>
+      <head>
+        <script defer src="https://cloud.umami.is/script.js" data-website-id="073eb640-d571-4f40-95ea-40b6817f6f25" />
+      </head>
       <body className="min-h-full flex flex-col pb-16" suppressHydrationWarning>
         <AuthProvider>
           <main className="flex-1">{children}</main>
