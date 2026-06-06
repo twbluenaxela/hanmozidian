@@ -13,4 +13,4 @@ echo "--- 🔍 END CHECK ---"
 node scripts/fly-migrate.mjs
 
 echo "🚀 Starting Next.js..."
-NODE_OPTIONS='--max-old-space-size=400' node server.js
+NODE_OPTIONS='--max-old-space-size=384' node server.js
