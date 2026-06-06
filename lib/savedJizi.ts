@@ -12,7 +12,7 @@ import {
   query,
   orderBy,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firestore";
 
 export const MAX_SAVED_JIZI = 10;
 

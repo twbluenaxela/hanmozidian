@@ -5,8 +5,6 @@ import JiziPicker from "@/components/JiziPicker";
 import CalligraphyCharacter from "@/components/CalligraphyCharacter";
 import { resolveCurrentImage } from "@/lib/utils";
 import { useImageRetry } from "@/lib/useImageRetry";
-import { toPng } from "html-to-image";
-import { jsPDF } from "jspdf";
 import { useAuth } from "@/lib/auth-context";
 import { saveJizi, JIZI_LOAD_KEY } from "@/lib/savedJizi";
 
@@ -173,6 +171,7 @@ export default function JiziPage() {
     let thumbnail: string | undefined;
     if (canvasRef.current) {
       try {
+        const { toPng } = await import("html-to-image");
         thumbnail = await toPng(canvasRef.current, {
           pixelRatio: 1,
           backgroundColor: paper.color === "transparent" ? "#ffffff" : paper.color,
@@ -205,6 +204,7 @@ export default function JiziPage() {
     setPickerOpen(false);
     try {
       await new Promise((r) => setTimeout(r, 300));
+      const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(canvasRef.current, {
         pixelRatio: 3,
         backgroundColor: paper.color === "transparent" ? undefined : paper.color,
@@ -241,6 +241,7 @@ export default function JiziPage() {
     setPickerOpen(false);
     try {
       await new Promise((r) => setTimeout(r, 300));
+      const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(canvasRef.current, {
         pixelRatio: 3,
         backgroundColor: paper.color === "transparent" ? undefined : paper.color,
@@ -270,6 +271,10 @@ export default function JiziPage() {
     setPickerOpen(false);
     try {
       await new Promise((r) => setTimeout(r, 300));
+      const [{ toPng }, { jsPDF }] = await Promise.all([
+        import("html-to-image"),
+        import("jspdf"),
+      ]);
       const dataUrl = await toPng(canvasRef.current, {
         pixelRatio: 3,
         backgroundColor: paper.color === "transparent" ? undefined : paper.color,

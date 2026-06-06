@@ -1,8 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { toPng } from "html-to-image";
-import { jsPDF } from "jspdf";
 import { useImageRetry } from "@/lib/useImageRetry";
 
 const PAPERS = [
@@ -93,6 +91,7 @@ export default function ZitieModal({ char, images, initialImageId, onClose }: Zi
 
   const captureImage = async () => {
     if (!sheetRef.current) throw new Error("no ref");
+    const { toPng } = await import("html-to-image");
     return toPng(sheetRef.current, {
       pixelRatio: 3,
       backgroundColor: paper.color,
@@ -127,6 +126,7 @@ export default function ZitieModal({ char, images, initialImageId, onClose }: Zi
       const pxW = img.naturalWidth;
       const pxH = img.naturalHeight;
       const orientation = pxW > pxH ? "landscape" : "portrait";
+      const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation, unit: "px", format: [pxW, pxH] });
       pdf.addImage(dataUrl, "PNG", 0, 0, pxW, pxH);
       pdf.save(`zitie-${char}-${Date.now()}.pdf`);

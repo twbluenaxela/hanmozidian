@@ -35,7 +35,18 @@
       "Bash(git add *)",
       "Bash(git commit *)",
       "Bash(npm test *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "WebFetch(domain:docs.umami.is)",
+      "WebFetch(domain:hmmr.online)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:charlesjones.dev)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:flawlesscooking.com)",
+      "WebFetch(domain:umami.is)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({**{k:v for k,v in d.get\\('dependencies',{}\\).items\\(\\)}, **{k:v for k,v in d.get\\('devDependencies',{}\\).items\\(\\)}}, indent=2\\)\\)\")",
+      "Bash(python3 -c \"import json,sys;d=json.load\\(sys.stdin\\);print\\('main:',d.get\\('main'\\),'| module:',d.get\\('module'\\),'| browser:',d.get\\('browser'\\)\\)\")",
+      "Bash(timeout 480 npm run build)",
+      "Bash(./deploy.sh *)"
     ]
   }
 }
